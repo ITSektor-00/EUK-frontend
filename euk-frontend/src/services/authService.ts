@@ -37,7 +37,7 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = '';
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || '';
   }
 
   // Helper za auth headers

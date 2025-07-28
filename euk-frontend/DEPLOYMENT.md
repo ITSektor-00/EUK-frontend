@@ -1,4 +1,4 @@
-# Deployment Uputstva za SIRUS Frontend
+# Deployment Uputstva za EUK Frontend
 
 ## Environment Variables za Vercel
 
@@ -6,24 +6,24 @@ Postavite sledeće environment variables u Vercel dashboard-u:
 
 ### 1. Backend API URL
 ```
-NEXT_PUBLIC_API_URL=https://sirus-backend.railway.app
+NEXT_PUBLIC_API_URL=https://euk.onrender.com
 ```
 
 ### 2. App Configuration
 ```
-NEXT_PUBLIC_APP_NAME=SIRUS
+NEXT_PUBLIC_APP_NAME=EUK
 NEXT_PUBLIC_APP_VERSION=1.0.0
 ```
 
 ## Koraci za postavljanje:
 
 1. Idite na [Vercel Dashboard](https://vercel.com/dashboard)
-2. Izaberite vaš SIRUS frontend projekat
+2. Izaberite vaš EUK frontend projekat
 3. Idite na "Settings" tab
 4. Idite na "Environment Variables" sekciju
 5. Dodajte svaku varijablu:
    - **Name**: `NEXT_PUBLIC_API_URL`
-   - **Value**: `https://sirus-backend.railway.app`
+   - **Value**: `https://euk.onrender.com`
    - **Environment**: Production, Preview, Development
 6. Ponovite za ostale varijable
 7. Kliknite "Save"
@@ -35,10 +35,10 @@ Kreirajte `.env.local` fajl u root direktorijumu:
 
 ```env
 # Backend API URL
-NEXT_PUBLIC_API_URL=https://sirus-backend.railway.app
+NEXT_PUBLIC_API_URL=https://euk.onrender.com
 
 # App Configuration
-NEXT_PUBLIC_APP_NAME=SIRUS
+NEXT_PUBLIC_APP_NAME=EUK
 NEXT_PUBLIC_APP_VERSION=1.0.0
 ```
 
@@ -77,7 +77,7 @@ Frontend je konfigurisan da komunicira sa sledećim backend endpoint-ovima:
 ### Problem: API pozivi ne rade
 **Rešenje**: 
 1. Proverite da li je `NEXT_PUBLIC_API_URL` postavljen ispravno
-2. Proverite da li backend radi na Railway-u
+2. Proverite da li backend radi na Render-u
 3. Proverite CORS konfiguraciju na backend-u
 
 ### Problem: Auth ne radi
