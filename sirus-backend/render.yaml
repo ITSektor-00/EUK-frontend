@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: sirus-backend
+    env: java
+    buildCommand: ./mvnw clean package -DskipTests
+    startCommand: java -jar target/sirus-backend-0.0.1-SNAPSHOT.jar
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: PORT
+        value: 8080
+      - key: DATABASE_URL
+        value: jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:6543/postgres
+      - key: DATABASE_USERNAME
+        value: postgres.wynfrojhkzddzjbrpdcr
+      - key: DATABASE_PASSWORD
+        value: a*Xxk3B7?HF8&3r
+      - key: JWT_SECRET
+        value: your-super-secure-jwt-secret-key-at-least-256-bits-long-for-production-use-2024
+      - key: JWT_EXPIRATION
+        value: 86400000
+      - key: ADMIN_PASSWORD
+        value: your-secure-admin-password-here
+      - key: SECURITY_HEADERS_ENABLED
+        value: true 

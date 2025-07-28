@@ -1,0 +1,8 @@
+{
+  "name": "euk-frontend",
+  "functions": {
+    "app/**/*.tsx": {
+      "maxDuration": 30
+    }
+  }
+} 
