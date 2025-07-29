@@ -6,18 +6,17 @@ class ApiService {
   }
 
   // Helper za error handling
-  private handleApiError(error: any, endpoint: string): string {
+  private handleApiError(error: Error | unknown, endpoint: string): string {
     console.error(`Error calling ${endpoint}:`, error);
     
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      return 'Greška mreže. Proverite internet konekciju.';
+    if (error instanceof Error) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        return 'Greška mreže. Proverite internet konekciju.';
+      }
+      return error.message;
     }
     
-    if (error.response) {
-      return `HTTP greška ${error.response.status}: ${error.response.statusText}`;
-    }
-    
-    return error.message || 'Nepoznata greška';
+    return 'Nepoznata greška';
   }
 
   // Auth endpoints

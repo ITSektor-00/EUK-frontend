@@ -2,15 +2,13 @@
 
 import { useState } from 'react';
 import { apiService } from '../services/api';
-import { useApi } from '../hooks/useApi';
 
 export const ApiTest: React.FC = () => {
-  const { apiCall, loading: hookLoading, error: hookError } = useApi();
   const [testResults, setTestResults] = useState<{
     hello?: string;
     status?: string;
     echo?: string;
-    cors?: any;
+    cors?: string | object;
   }>({});
   const [loading, setLoading] = useState<{
     hello: boolean;
@@ -30,8 +28,9 @@ export const ApiTest: React.FC = () => {
     try {
       const result = await apiService.testHello();
       setTestResults(prev => ({ ...prev, hello: result }));
-    } catch (error: any) {
-      setTestResults(prev => ({ ...prev, hello: `Greška: ${error.message}` }));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Nepoznata greška';
+      setTestResults(prev => ({ ...prev, hello: `Greška: ${errorMessage}` }));
     } finally {
       setLoading(prev => ({ ...prev, hello: false }));
     }
@@ -42,8 +41,9 @@ export const ApiTest: React.FC = () => {
     try {
       const result = await apiService.testStatus();
       setTestResults(prev => ({ ...prev, status: result }));
-    } catch (error: any) {
-      setTestResults(prev => ({ ...prev, status: `Greška: ${error.message}` }));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Nepoznata greška';
+      setTestResults(prev => ({ ...prev, status: `Greška: ${errorMessage}` }));
     } finally {
       setLoading(prev => ({ ...prev, status: false }));
     }
@@ -54,8 +54,9 @@ export const ApiTest: React.FC = () => {
     try {
       const result = await apiService.testEcho(echoMessage);
       setTestResults(prev => ({ ...prev, echo: result }));
-    } catch (error: any) {
-      setTestResults(prev => ({ ...prev, echo: `Greška: ${error.message}` }));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Nepoznata greška';
+      setTestResults(prev => ({ ...prev, echo: `Greška: ${errorMessage}` }));
     } finally {
       setLoading(prev => ({ ...prev, echo: false }));
     }
@@ -66,8 +67,9 @@ export const ApiTest: React.FC = () => {
     try {
       const result = await apiService.testCORS();
       setTestResults(prev => ({ ...prev, cors: result }));
-    } catch (error: any) {
-      setTestResults(prev => ({ ...prev, cors: `Greška: ${error.message}` }));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Nepoznata greška';
+      setTestResults(prev => ({ ...prev, cors: `Greška: ${errorMessage}` }));
     } finally {
       setLoading(prev => ({ ...prev, cors: false }));
     }
@@ -87,7 +89,7 @@ export const ApiTest: React.FC = () => {
       const corsResult = await apiService.testCORS();
       setTestResults(prev => ({ ...prev, cors: corsResult }));
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Test failed:', err);
     }
   };
@@ -100,12 +102,10 @@ export const ApiTest: React.FC = () => {
       <div className="mb-4">
         <button
           onClick={testAllEndpoints}
-          disabled={hookLoading}
           className="btn btn-primary"
         >
-          {hookLoading ? 'Testiranje...' : 'Testiraj sve endpoint-e'}
+          Testiraj sve endpoint-e
         </button>
-        {hookError && <div className="mt-2 text-red-600">Greška: {hookError}</div>}
       </div>
       
       <div className="space-y-4">

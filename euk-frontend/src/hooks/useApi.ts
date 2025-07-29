@@ -26,8 +26,8 @@ export function useApi() {
       
       const data = await response.json();
       return data;
-    } catch (err: any) {
-      const errorMessage = err.message || 'Nepoznata greška';
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Nepoznata greška';
       setError(errorMessage);
       throw err;
     } finally {
