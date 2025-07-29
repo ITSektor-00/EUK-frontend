@@ -2,7 +2,22 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || '';
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com';
+  }
+
+  // Helper za error handling
+  private handleApiError(error: any, endpoint: string): string {
+    console.error(`Error calling ${endpoint}:`, error);
+    
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      return 'Greška mreže. Proverite internet konekciju.';
+    }
+    
+    if (error.response) {
+      return `HTTP greška ${error.response.status}: ${error.response.statusText}`;
+    }
+    
+    return error.message || 'Nepoznata greška';
   }
 
   // Auth endpoints
@@ -13,25 +28,33 @@ class ApiService {
     firstName: string;
     lastName: string;
   }) {
-    const response = await fetch(`${this.baseURL}/api/auth/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(userData)
-    });
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData)
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Greška pri registraciji');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Greška pri registraciji');
+      }
+
+      const data = await response.json();
+      console.log('Registration successful:', data);
+      return data;
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw new Error(this.handleApiError(error, '/api/auth/signup'));
     }
-
-    return response.json();
   }
 
   async checkUsernameAvailability(username: string): Promise<boolean> {
     try {
-      const response = await fetch(`/api/auth/check-username?username=${encodeURIComponent(username)}`, {
+      // Prvo probaj real auth endpoint
+      const response = await fetch(`${this.baseURL}/api/auth/check-username?username=${encodeURIComponent(username)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -40,81 +63,146 @@ class ApiService {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('Real username check:', data);
+        return data.available;
+      }
+      
+      // Fallback na test endpoint
+      const testResponse = await fetch(`${this.baseURL}/api/test/check-username-test?username=${encodeURIComponent(username)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (testResponse.ok) {
+        const data = await testResponse.json();
+        console.log('Test username check:', data);
         return data.available;
       }
       
       return false;
     } catch (error) {
-      console.error('Greška pri proveri korisničkog imena:', error);
-      return false;
+      console.error('Username check error:', error);
+      return false; // Ako ne radi, pretpostavimo da je zauzet
     }
   }
 
   async signIn(credentials: {
-    usernameOrEmail: string; // Može biti username ILI email
+    usernameOrEmail: string;
     password: string;
   }) {
-    const response = await fetch(`${this.baseURL}/api/auth/signin`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(credentials)
-    });
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/signin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(credentials)
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Greška pri prijavi');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Greška pri prijavi');
+      }
+
+      const data = await response.json();
+      console.log('Sign in successful:', data);
+      return data;
+    } catch (error) {
+      console.error('Sign in error:', error);
+      throw new Error(this.handleApiError(error, '/api/auth/signin'));
     }
-
-    return response.json();
   }
 
   async getCurrentUser(token: string) {
-    const response = await fetch(`${this.baseURL}/api/auth/me`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    try {
+      const response = await fetch(`${this.baseURL}/api/auth/me`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Greška pri učitavanju korisnika');
       }
-    });
 
-    if (!response.ok) {
-      throw new Error('Greška pri učitavanju korisnika');
+      return response.json();
+    } catch (error) {
+      console.error('Get current user error:', error);
+      throw new Error(this.handleApiError(error, '/api/auth/me'));
     }
-
-    return response.json();
   }
 
   // Test endpoints
   async testHello(): Promise<string> {
-    const response = await fetch(`${this.baseURL}/api/test/hello`);
-    if (!response.ok) {
-      throw new Error('Greška pri testiranju hello endpoint-a');
+    try {
+      const response = await fetch(`${this.baseURL}/api/test/hello`);
+      if (!response.ok) {
+        throw new Error('Greška pri testiranju hello endpoint-a');
+      }
+      const data = await response.text();
+      console.log('Hello test:', data);
+      return data;
+    } catch (error) {
+      console.error('Hello test error:', error);
+      throw new Error(this.handleApiError(error, '/api/test/hello'));
     }
-    return response.text();
   }
 
   async testStatus(): Promise<string> {
-    const response = await fetch(`${this.baseURL}/api/test/status`);
-    if (!response.ok) {
-      throw new Error('Greška pri testiranju status endpoint-a');
+    try {
+      const response = await fetch(`${this.baseURL}/api/test/status`);
+      if (!response.ok) {
+        throw new Error('Greška pri testiranju status endpoint-a');
+      }
+      const data = await response.text();
+      console.log('Status test:', data);
+      return data;
+    } catch (error) {
+      console.error('Status test error:', error);
+      throw new Error(this.handleApiError(error, '/api/test/status'));
     }
-    return response.text();
   }
 
   async testEcho(message: unknown): Promise<string> {
-    const response = await fetch(`${this.baseURL}/api/test/echo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(message)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Greška pri testiranju echo endpoint-a');
+    try {
+      const response = await fetch(`${this.baseURL}/api/test/echo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: message as string
+      });
+      
+      if (!response.ok) {
+        throw new Error('Greška pri testiranju echo endpoint-a');
+      }
+      
+      const data = await response.text();
+      console.log('Echo test:', data);
+      return data;
+    } catch (error) {
+      console.error('Echo test error:', error);
+      throw new Error(this.handleApiError(error, '/api/test/echo'));
     }
-    
-    return response.text();
+  }
+
+  // CORS test
+  async testCORS() {
+    try {
+      const response = await fetch(`${this.baseURL}/api/test/cors-test`);
+      if (!response.ok) {
+        throw new Error('Greška pri testiranju CORS endpoint-a');
+      }
+      const data = await response.json();
+      console.log('CORS test:', data);
+      return data;
+    } catch (error) {
+      console.error('CORS test error:', error);
+      throw new Error(this.handleApiError(error, '/api/test/cors-test'));
+    }
   }
 }
 
