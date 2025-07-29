@@ -57,7 +57,13 @@ public class DevelopmentConfig implements WebMvcConfigurer {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*")); // Dozvoli sve origins u development
+        // Dozvoli EUK domene i localhost za development
+        configuration.setAllowedOrigins(List.of(
+            "https://euk.vercel.app",
+            "https://euk-it-sectors-projects.vercel.app",
+            "http://localhost:3000",
+            "http://localhost:3001"
+        ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         configuration.setAllowCredentials(true);
@@ -71,7 +77,12 @@ public class DevelopmentConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns("*")
+                .allowedOrigins(
+                    "https://euk.vercel.app",
+                    "https://euk-it-sectors-projects.vercel.app",
+                    "http://localhost:3000",
+                    "http://localhost:3001"
+                )
                 .allowedMethods("*")
                 .allowedHeaders("*")
                 .allowCredentials(true)
