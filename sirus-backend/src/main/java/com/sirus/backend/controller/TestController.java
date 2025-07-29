@@ -1,25 +1,43 @@
 package com.sirus.backend.controller;
 
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.RequestMethod;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/test")
-@CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS})
+@CrossOrigin(origins = {"https://euk.vercel.app", "https://euk-it-sectors-projects.vercel.app"})
 public class TestController {
-    
-    @GetMapping("/hello")
-    public String hello() {
-        return "Hello from EUK Backend!";
+
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "OK");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("service", "SIRUS Backend");
+        response.put("version", "1.0.0");
+        return response;
     }
-    
-    @GetMapping("/status")
-    public String status() {
-        return "EUK Backend is running!";
+
+    @GetMapping("/euk-status")
+    public Map<String, Object> eukStatus() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "EUK Domains Configured");
+        response.put("timestamp", LocalDateTime.now());
+        response.put("allowedDomains", new String[]{
+            "https://euk.vercel.app",
+            "https://euk-it-sectors-projects.vercel.app"
+        });
+        response.put("corsEnabled", true);
+        response.put("rateLimitEnabled", true);
+        response.put("maxRequestsPerMinute", 150);
+        return response;
     }
-    
-    @PostMapping("/echo")
-    public String echo(@RequestBody String message) {
-        return "Echo: " + message;
+
+    @GetMapping("/ping")
+    public String ping() {
+        return "pong";
     }
 } 

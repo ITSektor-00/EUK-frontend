@@ -22,4 +22,10 @@ services:
       - key: ADMIN_PASSWORD
         value: your-secure-admin-password-here
       - key: SECURITY_HEADERS_ENABLED
-        value: true 
+        value: true
+      - key: EUK_ALLOWED_DOMAINS
+        value: https://euk.vercel.app,https://euk-it-sectors-projects.vercel.app
+      - key: EUK_RATE_LIMIT_ENABLED
+        value: true
+      - key: EUK_RATE_LIMIT_MAX_REQUESTS
+        value: 150 

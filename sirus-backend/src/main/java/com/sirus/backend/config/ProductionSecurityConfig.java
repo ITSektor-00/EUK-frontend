@@ -58,12 +58,13 @@ public class ProductionSecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Restrict origins in production
+        // Allow both EUK Vercel domains
         configuration.setAllowedOrigins(List.of(
-            "https://your-frontend-domain.vercel.app"  // Dodajte vaš Vercel domain
+            "https://euk.vercel.app",
+            "https://euk-it-sectors-projects.vercel.app"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
         

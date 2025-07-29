@@ -1,185 +1,83 @@
-# SIRUS Backend - Spring Boot Application
+# SIRUS Backend
 
-Spring Boot backend aplikacija sa JWT autentifikacijom i PostgreSQL database.
+Spring Boot backend aplikacija za EUK platformu.
 
-## 🚀 Quick Start - PostgreSQL Deployment
+## EUK Domene
 
-### Preduslovi
-- Docker Desktop instaliran i pokrenut
-- PostgreSQL database (Supabase ili lokalni)
-- Java 17 ili noviji
+Aplikacija je konfigurisana za rad sa sledećim Vercel domenima:
 
-### Korak 1: Environment Setup
-```powershell
-# Kopirajte environment fajl
-copy env.example .env
+- **Glavni domen**: https://euk.vercel.app/
+- **IT Sektori projekti**: https://euk-it-sectors-projects.vercel.app/
 
-# Uredite .env sa vašim vrednostima
-notepad .env
-```
+### Konfiguracija za EUK domene
 
-### Korak 2: Deployment
-```powershell
-# Automatski deployment
-.\deploy-backend-only.bat
+#### CORS (Cross-Origin Resource Sharing)
+- Oba domena su dozvoljena u CORS konfiguraciji
+- Podržani su svi HTTP metodi (GET, POST, PUT, DELETE, OPTIONS)
+- Dozvoljeni su Authorization, Content-Type, X-Requested-With, Accept headeri
 
-# Ili ručno
-docker build -t sirus-backend:latest .
-docker run -p 8080:8080 --env-file .env sirus-backend:latest
-```
+#### Rate Limiting
+- EUK domene imaju povećan rate limit: **150 zahteva po minuti**
+- Standardni limit za ostale domene: **100 zahteva po minuti**
+- Rate limit se resetuje svaki minut
 
-## 📁 Projektna struktura
+#### Security Headers
+- Content Security Policy je konfigurisan da dozvoli EUK domene
+- Strict Transport Security je omogućen
+- X-Frame-Options, X-Content-Type-Options, X-XSS-Protection su aktivni
 
-```
-sirus-backend/
-├── src/main/java/com/sirus/backend/
-│   ├── config/          # Spring Security konfiguracija
-│   ├── controller/      # REST kontroleri
-│   ├── dto/            # Data Transfer Objects
-│   ├── entity/         # JPA entiteti
-│   ├── repository/     # Repository interfejsi
-│   ├── service/        # Business logika
-│   └── SirusBackendApplication.java
-├── src/main/resources/
-│   ├── application.properties      # Development konfiguracija
-│   ├── application-prod.properties # Production konfiguracija
-│   └── schema.sql                 # Database schema
-├── Dockerfile           # Docker konfiguracija
-├── deploy-*.bat         # Deployment skripte
-└── README.md
-```
-
-## 🔧 Konfiguracija
-
-### Database Connection
-Aplikacija koristi PostgreSQL database:
-
-```properties
-spring.datasource.url=jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:6543/postgres
-spring.datasource.username=postgres.wynfrojhkzddzjbrpdcr
-spring.datasource.password=${DATABASE_PASSWORD}
-```
-
-### Environment Variables
-- `DATABASE_URL` - PostgreSQL connection string
-- `DATABASE_USERNAME` - Database username
-- `DATABASE_PASSWORD` - Database password
-- `JWT_SECRET` - Secret key za JWT token generisanje
-- `ADMIN_PASSWORD` - Admin user password
-- `PORT` - Server port (default: 8080)
-
-## 🐳 Docker
-
-### Build
-```bash
-docker build -t sirus-backend:latest .
-```
-
-### Run
-```bash
-docker run -p 8080:8080 \
-  -e DATABASE_URL=jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:6543/postgres \
-  -e DATABASE_USERNAME=postgres.wynfrojhkzddzjbrpdcr \
-  -e DATABASE_PASSWORD=your-password \
-  -e JWT_SECRET=your-secret \
-  sirus-backend:latest
-```
-
-## 🔐 Security
-
-### JWT Authentication
-- Token expiration: 24h (konfigurabilno)
-- Secret key: konfigurabilno kroz environment variable
-- Endpoints: `/api/auth/signin`, `/api/auth/signup`
-
-### CORS Configuration
-- Development: svi origins dozvoljeni
-- Production: konfigurabilno kroz environment variables
-
-## 📊 API Endpoints
-
-### Authentication
-- `POST /api/auth/signup` - Registracija korisnika
-- `POST /api/auth/signin` - Prijava korisnika
+## Endpoints za EUK domene
 
 ### Health Check
-- `GET /actuator/health` - Health check endpoint
-
-### Test
-- `GET /api/test` - Test endpoint (zahteva autentifikaciju)
-
-## 🚀 Deployment
-
-### Container Instance
-Aplikacija je optimizovana za container deployment:
-
-- **Port**: 8080
-- **Health Check**: `/actuator/health`
-- **Environment Variables**: konfigurabilno kroz environment fajl
-
-### Deployment Skripte
-- `deploy-backend-only.bat` - Pojednostavljen deployment
-- `deploy.sh` - Linux deployment skripta
-
-## 📚 Dokumentacija
-
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Detaljni deployment vodič
-- [WINDOWS_SETUP.md](WINDOWS_SETUP.md) - Windows setup instrukcije
-
-## 🛠️ Development
-
-### Lokalni razvoj
-```bash
-# Pokrenite sa Maven
-./mvnw spring-boot:run
-
-# Ili sa Docker
-docker-compose up
+```
+GET /api/test/health
 ```
 
-### Testiranje
-```bash
-# Unit testovi
-./mvnw test
-
-# Integration testovi
-./mvnw verify
+### EUK Status
+```
+GET /api/test/euk-status
 ```
 
-## 🔍 Monitoring
+### Ping
+```
+GET /api/test/ping
+```
 
-### Health Checks
-- `/actuator/health` - Osnovni health check
-- `/actuator/info` - Informacije o aplikaciji
+## Deployment
 
-### Logging
-- Log level: INFO (production), DEBUG (development)
-- Log format: JSON (production), plain text (development)
+Aplikacija je konfigurisana za deployment na Render.com sa sledećim environment varijablama:
 
-## 🚨 Troubleshooting
+- `SPRING_PROFILES_ACTIVE=prod`
+- `EUK_ALLOWED_DOMAINS=https://euk.vercel.app,https://euk-it-sectors-projects.vercel.app`
+- `EUK_RATE_LIMIT_ENABLED=true`
+- `EUK_RATE_LIMIT_MAX_REQUESTS=150`
 
-### Česti problemi
-1. **Database connection greške**
-   - Proverite PostgreSQL connection string
-   - Proverite network connectivity
-   - Proverite database credentials
+## Development
 
-2. **Docker build greške**
-   - Proverite da li je Docker Desktop pokrenut
-   - Proverite da li su svi fajlovi u direktorijumu
+Za lokalni development:
 
-3. **PostgreSQL greške**
-   - Proverite da li je database dostupan
-   - Proverite da li su credentials ispravni
-   - Proverite da li je port 6543 otvoren
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
 
-## 📞 Support
+Development profil uključuje:
+- Debug logging
+- CORS za localhost:3000 i localhost:3001
+- Povećan rate limit (1000 zahteva/min)
+- Detaljne error poruke
 
-Za dodatnu pomoć:
-- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-- [Spring Boot Documentation](https://spring.io/projects/spring-boot)
-- [Supabase Documentation](https://supabase.com/docs)
+## Production
 
-## 📄 License
+Za produkciju:
 
-Ovaj projekat je licenciran pod MIT licencom. 
+```bash
+./mvnw clean package -DskipTests
+java -jar target/sirus-backend-0.0.1-SNAPSHOT.jar
+```
+
+Produkcija uključuje:
+- INFO level logging
+- CORS samo za EUK domene
+- Rate limiting (150 zahteva/min za EUK domene)
+- Sigurnosne header-e
+- Health check endpoint-e 

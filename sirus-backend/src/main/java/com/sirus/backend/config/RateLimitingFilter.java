@@ -18,7 +18,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private final ConcurrentHashMap<String, AtomicInteger> requestCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> lastResetTime = new ConcurrentHashMap<>();
     
-    private static final int MAX_REQUESTS_PER_MINUTE = 60;
+    private static final int MAX_REQUESTS_PER_MINUTE = 100; // Povećano za EUK domene
     private static final long RESET_INTERVAL = 60000; // 1 minute
 
     @Override
@@ -27,7 +27,17 @@ public class RateLimitingFilter extends OncePerRequestFilter {
                                   FilterChain filterChain) throws ServletException, IOException {
         
         String clientIp = getClientIpAddress(request);
+        String origin = request.getHeader("Origin");
         String key = clientIp + ":" + request.getRequestURI();
+        
+        // Posebna pravila za EUK domene
+        boolean isEukDomain = origin != null && (
+            origin.contains("euk.vercel.app") || 
+            origin.contains("euk-it-sectors-projects.vercel.app")
+        );
+        
+        // Veći limit za EUK domene
+        int maxRequests = isEukDomain ? 150 : MAX_REQUESTS_PER_MINUTE;
         
         long currentTime = System.currentTimeMillis();
         
@@ -42,15 +52,15 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         AtomicInteger count = requestCounts.computeIfAbsent(key, k -> new AtomicInteger(0));
         int currentCount = count.incrementAndGet();
         
-        if (currentCount > MAX_REQUESTS_PER_MINUTE) {
+        if (currentCount > maxRequests) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.getWriter().write("Rate limit exceeded. Please try again later.");
             return;
         }
         
         // Add rate limit headers
-        response.setHeader("X-RateLimit-Limit", String.valueOf(MAX_REQUESTS_PER_MINUTE));
-        response.setHeader("X-RateLimit-Remaining", String.valueOf(MAX_REQUESTS_PER_MINUTE - currentCount));
+        response.setHeader("X-RateLimit-Limit", String.valueOf(maxRequests));
+        response.setHeader("X-RateLimit-Remaining", String.valueOf(maxRequests - currentCount));
         response.setHeader("X-RateLimit-Reset", String.valueOf(lastResetTime.get(key) + RESET_INTERVAL));
         
         filterChain.doFilter(request, response);
