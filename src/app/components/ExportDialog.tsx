@@ -1,0 +1,188 @@
+import React, { useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  FormControlLabel,
+  Checkbox,
+  FormGroup,
+  Box,
+  Typography,
+  Divider,
+  RadioGroup,
+  Radio,
+} from '@mui/material';
+import { FileDownload, PictureAsPdf, TableChart } from '@mui/icons-material';
+
+interface Column {
+  accessorKey: string;
+  header: string;
+}
+
+interface ExportDialogProps {
+  open: boolean;
+  onClose: () => void;
+  columns: Column[];
+  data: Record<string, unknown>[];
+  onExport: (selectedColumns: string[], format: string, data: Record<string, unknown>[]) => void;
+}
+
+export default function ExportDialog({ open, onClose, columns, data, onExport }: ExportDialogProps) {
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(columns.map(col => col.accessorKey));
+  const [format, setFormat] = useState('csv');
+
+  const handleColumnToggle = (columnKey: string) => {
+    setSelectedColumns(prev => 
+      prev.includes(columnKey) 
+        ? prev.filter(col => col !== columnKey)
+        : [...prev, columnKey]
+    );
+  };
+
+  const handleSelectAll = () => {
+    setSelectedColumns(columns.map(col => col.accessorKey));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedColumns([]);
+  };
+
+  const handleExport = () => {
+    if (selectedColumns.length === 0) {
+      alert('Молимо изаберите бар једну колону за извоз');
+      return;
+    }
+    onExport(selectedColumns, format, data);
+    onClose();
+  };
+
+  const formatOptions = [
+    { value: 'csv', label: 'CSV', icon: <TableChart /> },
+    { value: 'excel', label: 'Excel (.xlsx)', icon: <FileDownload /> },
+    { value: 'pdf', label: 'PDF', icon: <PictureAsPdf /> },
+  ];
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ 
+        backgroundColor: '#3B82F6',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1,
+        fontWeight: 'bold'
+      }}>
+        <FileDownload />
+        Извоз података
+      </DialogTitle>
+      
+      <DialogContent sx={{ pt: 4 }}>
+        <Box sx={{ mb: 3, mt: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Изаберите формат извоза
+          </Typography>
+          <FormControl component="fieldset">
+            <RadioGroup
+              row
+              value={format}
+              onChange={(e) => setFormat(e.target.value)}
+            >
+              {formatOptions.map((option) => (
+                              <FormControlLabel
+                key={option.value}
+                value={option.value}
+                control={
+                  <Radio 
+                    sx={{
+                      '&.Mui-checked': {
+                        color: '#3B82F6',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {option.icon}
+                    {option.label}
+                  </Box>
+                }
+              />
+              ))}
+            </RadioGroup>
+          </FormControl>
+        </Box>
+
+        <Divider sx={{ my: 2 }} />
+
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              Изаберите колоне за извоз
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <button
+                onClick={handleSelectAll}
+                className="px-3 py-1.5 border border-[#3B82F6] text-[#3B82F6] rounded-md hover:bg-[#3B82F6] hover:text-white transition-colors duration-200 text-sm font-medium"
+              >
+                Изабери све
+              </button>
+              <button
+                onClick={handleDeselectAll}
+                className="px-3 py-1.5 border border-[#3B82F6] text-[#3B82F6] rounded-md hover:bg-[#3B82F6] hover:text-white transition-colors duration-200 text-sm font-medium"
+              >
+                Поништи све
+              </button>
+            </Box>
+          </Box>
+
+          <FormGroup sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 1 }}>
+            {columns.map((column) => (
+              <FormControlLabel
+                key={column.accessorKey}
+                control={
+                                  <Checkbox
+                  checked={selectedColumns.includes(column.accessorKey)}
+                  onChange={() => handleColumnToggle(column.accessorKey)}
+                  sx={{
+                    '&.Mui-checked': {
+                      color: '#3B82F6',
+                    },
+                    '&.MuiCheckbox-root': {
+                      color: '#3B82F6',
+                    },
+                  }}
+                />
+                }
+                label={column.header}
+              />
+            ))}
+          </FormGroup>
+
+          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Изабрано колона: {selectedColumns.length} од {columns.length}
+            </Typography>
+          </Box>
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ p: 3, gap: 1 }}>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 border border-[#3B82F6] text-[#3B82F6] rounded-md hover:bg-[#3B82F6] hover:text-white transition-colors duration-200 font-medium"
+        >
+          Откажи
+        </button>
+        <button
+          onClick={handleExport}
+          disabled={selectedColumns.length === 0}
+          className="px-4 py-2 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Извези
+        </button>
+      </DialogActions>
+    </Dialog>
+  );
+}
