@@ -27,7 +27,27 @@ class WebSocketService {
     try {
       console.log('WebSocketService: Connecting to WebSocket...');
       
-      const socket = new SockJS('http://localhost:8080/ws');
+      // Dinamički određivanje WebSocket URL-a na osnovu environment-a
+      const getWebSocketUrl = () => {
+        if (typeof window === 'undefined') {
+          // Server-side rendering
+          return 'http://localhost:8080/ws';
+        }
+        
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        if (isDevelopment) {
+          return 'http://localhost:8080/ws';
+        }
+        
+        // Production - koristi HTTPS protokol ako je stranica učitana preko HTTPS-a
+        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        return `${protocol}//euk.onrender.com/ws`;
+      };
+      
+      const wsUrl = getWebSocketUrl();
+      console.log('WebSocketService: Connecting to:', wsUrl);
+      
+      const socket = new SockJS(wsUrl);
       this.stompClient = new Client({
         webSocketFactory: () => socket,
         debug: (str) => {
