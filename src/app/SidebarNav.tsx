@@ -1,7 +1,10 @@
 "use client";
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiService } from '@/services/api';
+import { NIVOI_PRISTUPA } from '@/components/RouteGuard';
 
 import DynamicIcon from './components/DynamicIcon';
 
@@ -11,28 +14,265 @@ interface NavLink {
   icon?: React.ReactElement
 }
 
-// Definišemo samo ЕУК СИСТЕМ секцију
-const allSections = [
-  {
-    title: 'ЕУК СИСТЕМ',
-    links: [
-      { href: '/euk/kategorije', label: 'Категорије', icon: <DynamicIcon iconName="kategorije" alt="Категорије" /> },
-      { href: '/euk/predmeti', label: 'Предмети', icon: <DynamicIcon iconName="predmeti" alt="Предмети" /> },
-      { href: '/euk/ugrozena-lica', label: 'Угрожена лица', icon: <DynamicIcon iconName="ugrozena-lica" alt="Угрожена лица" /> },
-    ] as NavLink[],
-  },
-];
+interface UserRoute {
+  id: number;
+  userId: number;
+  routeId: number;
+  route: string;
+  user: {
+    id: number;
+    username: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    isActive: boolean;
+  };
+  routeDto: {
+    id: number;
+    ruta: string;
+    naziv: string;
+  };
+}
+
+interface Route {
+  id: number;
+  ruta: string;
+  naziv: string;
+  opis: string;
+  sekcija: string;
+  aktivna: boolean;
+  datumKreiranja: string;
+}
 
 interface SidebarNavProps {
   sidebarOpen?: boolean;
   onToggle?: () => void;
+  isAdmin?: boolean;
+  showOnlyUsers?: boolean;
+  userId?: number | null;
 }
 
-export default function SidebarNav({ sidebarOpen = true, onToggle }: SidebarNavProps) {
+export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = false, showOnlyUsers = false, userId }: SidebarNavProps) {
   const pathname = usePathname()
+  const { user, token } = useAuth();
+  const [userRoutes, setUserRoutes] = useState<UserRoute[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [assignedRoutes, setAssignedRoutes] = useState<UserRoute[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Pojednostavljen sidebar - prikaži sve sekcije
-  const sections = allSections;
+  // Učitaj dodeljene rute iz localStorage
+  const loadAssignedRoutes = useCallback(() => {
+    try {
+      const saved = localStorage.getItem('userRoutes');
+      if (saved) {
+        const routes = JSON.parse(saved);
+        // Filtriraj rute za trenutnog korisnika
+        const userSpecificRoutes = routes.filter((route: UserRoute) => route.userId === user?.id);
+        setAssignedRoutes(userSpecificRoutes);
+        console.log('Assigned routes loaded for user:', user?.id, userSpecificRoutes);
+      }
+    } catch (error) {
+      console.error('Error loading assigned routes:', error);
+    }
+  }, [user?.id]);
+
+  const loadUserRoutes = useCallback(async () => {
+    if (!user || !token) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const [userRoutesData, routesData] = await Promise.all([
+        apiService.getUserRoutesByUserId(user.id, token),
+        apiService.getRoutes(token)
+      ]);
+      setUserRoutes(Array.isArray(userRoutesData) ? userRoutesData : []);
+      setRoutes(Array.isArray(routesData) ? routesData : []);
+    } catch (error) {
+      console.error('Error loading user routes:', error);
+      // Fallback na role-based rute ako API ne radi
+      const fallbackRoutes = getFallbackRoutesForRole(user.role);
+      setUserRoutes(fallbackRoutes);
+      setRoutes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, token]);
+
+  useEffect(() => {
+    if (!user || !token) {
+      setLoading(false);
+      return;
+    }
+    
+    // Učitaj dodeljene rute
+    loadAssignedRoutes();
+    
+    // ADMIN ne koristi EUK rute - samo admin panel
+    if (user.role?.toUpperCase() !== 'ADMIN') {
+      loadUserRoutes();
+    } else {
+      setLoading(false);
+    }
+  }, [user, token, loadUserRoutes, loadAssignedRoutes]);
+
+  // Osveži dodeljene rute kada se promene u localStorage
+  useEffect(() => {
+    const handleStorageChange = () => {
+      loadAssignedRoutes();
+    };
+
+    const handleRoutesUpdated = () => {
+      loadAssignedRoutes();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('routesUpdated', handleRoutesUpdated);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('routesUpdated', handleRoutesUpdated);
+    };
+  }, [loadAssignedRoutes]);
+
+  // Role-based route mapping
+  const getRoleBasedRoutes = (role: string): string[] => {
+    const roleRoutes: { [key: string]: string[] } = {
+      'ADMIN': [], // ADMIN ne koristi EUK sekciju - samo admin panel
+      'OBRADJIVAC': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje'],
+      'POTPISNIK': ['euk/stampanje']
+    };
+
+    return roleRoutes[role] || [];
+  };
+
+  const getFallbackRoutesForRole = (role: string): UserRoute[] => {
+    const routes = getRoleBasedRoutes(role);
+    return routes.map((route, index) => ({
+      id: index + 1,
+      userId: user!.id,
+      routeId: index + 1,
+      route: route,
+      nivoDozvola: 1,
+      user: { 
+        id: user!.id, 
+        username: user!.username, 
+        firstName: user!.firstName, 
+        lastName: user!.lastName, 
+        role: user!.role, 
+        isActive: user!.isActive, 
+        nivoPristupa: user!.nivoPristupa || 2 
+      },
+      routeDto: { 
+        id: index + 1, 
+        ruta: route, 
+        naziv: route, 
+        nivoMin: 2, 
+        nivoMax: 5 
+      }
+    }));
+  };
+
+  // Admin sidebar - samo admin/korisnici i admin/sistem
+  const getAdminSections = () => {
+    return [
+      {
+        title: 'АДМИН ПАНЕЛ',
+        links: [
+          { href: '/admin/korisnici', label: 'КОРИСНИЦИ', icon: <DynamicIcon iconName="ugrozena-lica" alt="КОРИСНИЦИ" /> },
+          { href: '/admin/sistem', label: 'СИСТЕМ', icon: <DynamicIcon iconName="komandnaTabla" alt="СИСТЕМ" /> },
+        ] as NavLink[],
+      }
+    ];
+  };
+
+  // Role-based user sidebar
+  const getUserSections = () => {
+    if (loading) return [];
+
+    const routeMap: { [key: string]: { label: string; icon: string } } = {
+      'euk/kategorije': { label: 'КАТЕГОРИЈЕ', icon: 'kategorije' },
+      'euk/predmeti': { label: 'ПРЕДМЕТИ', icon: 'predmeti' },
+      'euk/ugrozena-lica': { label: 'УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
+      'euk/stampanje': { label: 'ШТАМПАЊЕ', icon: 'stampanje' },
+      'reports': { label: 'ИЗВЕШТАЈИ', icon: 'komandnaTabla' },
+      'analytics': { label: 'АНАЛИТИКА', icon: 'komandnaTabla' },
+      'settings': { label: 'ПОДЕШАВАЊА', icon: 'komandnaTabla' },
+      'profile': { label: 'ПРОФИЛ', icon: 'komandnaTabla' }
+    };
+
+    // Role-based route access
+    const userRole = user?.role || 'POTPISNIK';
+    let allowedRoutes: string[] = [];
+
+    if (userRole === 'ADMIN') {
+      // ADMIN ne vidi EUK sekciju - samo admin panel
+      allowedRoutes = [];
+    } else {
+      // Koristi dodeljene rute iz localStorage
+      const userAssignedRoutes = assignedRoutes.map(ur => ur.route);
+      allowedRoutes = userAssignedRoutes;
+      
+      // Dodaj profile i settings za sve uloge
+      allowedRoutes.push('profile', 'settings');
+      
+      // Ako nema dodeljenih ruta, koristi fallback na osnovu uloge
+      if (userAssignedRoutes.length === 0) {
+        allowedRoutes = getRoleBasedRoutes(userRole);
+        allowedRoutes.push('profile', 'settings');
+      }
+    }
+
+    const eukLinks = allowedRoutes
+      .filter(route => route.startsWith('euk/'))
+      .map(route => ({
+        href: `/${route}`,
+        label: routeMap[route]?.label || route,
+        icon: <DynamicIcon iconName={routeMap[route]?.icon || 'komandnaTabla'} alt={route} />
+      }));
+
+    const otherLinks = allowedRoutes
+      .filter(route => !route.startsWith('euk/'))
+      .map(route => ({
+        href: `/${route}`,
+        label: routeMap[route]?.label || route,
+        icon: <DynamicIcon iconName={routeMap[route]?.icon || 'komandnaTabla'} alt={route} />
+      }));
+
+    const sections = [];
+
+    if (eukLinks.length > 0) {
+      sections.push({
+        title: 'ЕУК СИСТЕМ',
+        links: eukLinks
+      });
+    }
+
+    if (otherLinks.length > 0) {
+      sections.push({
+        title: 'КОРИСНИЧКИ ПРОФИЛ',
+        links: otherLinks
+      });
+    }
+
+    return sections;
+  };
+
+  const getSections = () => {
+    if (!user) return [];
+
+    // Role-based access control
+    const userRole = user.role?.toUpperCase();
+    
+    if (userRole === 'ADMIN') {
+      return getAdminSections();
+    } else {
+      return getUserSections();
+    }
+  };
+
+  const sections = getSections();
 
   // Pojednostavljen UI dizajn
   return (
@@ -54,10 +294,10 @@ export default function SidebarNav({ sidebarOpen = true, onToggle }: SidebarNavP
       <div className="flex flex-col w-full flex-1">
         <div className="relative">
           <SidebarItem
-            href="/dashboard"
-            icon={<DynamicIcon iconName="komandnaTabla" alt="Командна табла" />}
-            label="Командна табла"
-            active={pathname === '/dashboard'}
+            href={user?.role?.toUpperCase() === 'ADMIN' ? "/admin/dashboard" : "/dashboard"}
+            icon={<DynamicIcon iconName="komandnaTabla" alt="КОМАНДНА ТАБЛА" />}
+            label="КОМАНДНА ТАБЛА"
+            active={pathname === '/dashboard' || pathname === '/admin/dashboard'}
             sidebarOpen={sidebarOpen}
           />
         </div>
@@ -135,7 +375,7 @@ function SidebarItem({ href, icon, label, active, sidebarOpen }: {
         focus:outline-none
       `}
       title={label}
-      style={{fontSize: 16, minHeight: 40, maxWidth: sidebarOpen ? 220 : 48, overflow: 'hidden'}}
+      style={{fontSize: 14, minHeight: 40, maxWidth: sidebarOpen ? 220 : 48, overflow: 'hidden'}}
     >
       <span className={`w-5 h-5 flex items-center justify-center z-10 ${active ? 'font-bold' : ''}`}>{icon}</span>
       {sidebarOpen && (

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import UserApprovalPending from './UserApprovalPending';
 
 const LoginForm: React.FC = () => {
   const { login } = useAuth();
@@ -14,6 +15,8 @@ const LoginForm: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showApprovalPending, setShowApprovalPending] = useState(false);
+  const [pendingUsername, setPendingUsername] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +24,17 @@ const LoginForm: React.FC = () => {
     setLoading(true);
 
     try {
-      await login(credentials);
+      const result = await login(credentials);
+      
+      // Proverava da li je rezultat neodobreni korisnik
+      if (result && (result as any).success === false && (result as any).code === 'ACCOUNT_PENDING_APPROVAL') {
+        setPendingUsername(credentials.usernameOrEmail);
+        setShowApprovalPending(true);
+        return; // Ne ide dalje, samo prikazuje pop-up
+      }
+      
+      // Posle uspešnog logina, preusmeri na odgovarajući dashboard
+      // Auth context će se ažurirati, a useEffect u layout-u će preusmeriti korisnika
       router.push('/dashboard');
     } catch (error: unknown) {
       // Poboljšana obrada grešaka
@@ -38,6 +51,9 @@ const LoginForm: React.FC = () => {
             break;
           case 'Nalog je deaktiviran':
             errorMessage = 'Vaš nalog je deaktiviran. Kontaktirajte administratora.';
+            break;
+          case 'Neispravno korisničko ime ili lozinka':
+            errorMessage = 'Neispravno korisničko ime ili lozinka';
             break;
           case 'Korisničko ime već postoji':
             errorMessage = 'Korisničko ime već postoji';
@@ -57,7 +73,18 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <>
+      {showApprovalPending && (
+        <UserApprovalPending 
+          username={pendingUsername}
+          onClose={() => {
+            setShowApprovalPending(false);
+            setPendingUsername('');
+          }}
+        />
+      )}
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="usernameOrEmail" className="block text-sm font-medium text-gray-700 mb-1">
           Корисничко име или Email
@@ -144,6 +171,7 @@ const LoginForm: React.FC = () => {
         )}
       </button>
     </form>
+    </>
   );
 };
 

@@ -7,7 +7,7 @@ import ClientLayoutShell from './ClientLayoutShell';
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'EUK Platforma',
+  title: 'ЕУК Платформа',
   description: 'ЕУК Платформа за управљање социјалном заштитом',
 }
 

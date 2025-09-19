@@ -1,699 +1,473 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../../contexts/AuthContext';
-import ErrorHandler from '../../components/ErrorHandler';
-import { apiService } from '../../../services/api';
-import '../../components/TableStyles.css';
+import React, { useState, useEffect } from "react";
+import Image from 'next/image';
+import UgrozenaLicaTable from './UgrozenaLicaTable';
+import NovoUgrozenoLiceModal from './NovoUgrozenoLiceModal';
+import UrediUgrozenoLiceModal from './UrediUgrozenoLiceModal';
+import ExportModal from './ExportModal';
+import ColumnsMenu from './ColumnsMenu';
+import { Button } from '@/components/ui/button';
+import UgrozenaLicaFilter from './UgrozenaLicaFilter';
+import UgrozenaLicaStatistika from './UgrozenaLicaStatistika';
+import { UgrozenoLice, UgrozenoLiceFormData, UgrozenoLiceResponse } from './types';
+import { PermissionGuard } from '@/components/PermissionGuard';
+import { useAuth } from '@/contexts/AuthContext';
 
-// MRT Imports
-import {
-  MaterialReactTable,
-  useMaterialReactTable,
-  createMRTColumnHelper,
-} from 'material-react-table';
+const ALL_COLUMNS = [
+  "ugrozenoLiceId",
+  "ime",
+  "prezime",
+  "jmbg",
+  "datumRodjenja",
+  "drzavaRodjenja",
+  "mestoRodjenja",
+  "opstinaRodjenja",
+  "predmetId",
+];
 
-// Material UI Imports
-import {
-  Box,
-  Button,
-  ListItemIcon,
-  MenuItem,
-  Typography,
-  Chip,
-} from '@mui/material';
-
-// Icons Imports
-import { Edit, Delete, Add, FileDownload, Person } from '@mui/icons-material';
-
-// Export imports
-import { mkConfig, generateCsv, download } from 'export-to-csv';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import ExportDialog from '../../components/ExportDialog';
-
-interface UgrozenoLice {
-  ugrozenoLiceId: number;
-  ime: string;
-  prezime: string;
-  jmbg: string;
-  datumRodjenja: string;
-  drzavaRodjenja: string;
-  mestoRodjenja: string;
-  opstinaRodjenja: string;
-  predmetId: number;
-  predmet?: {
-    predmetId: number;
-    nazivPredmeta: string;
-    status: string;
-    odgovornaOsoba: string;
-    prioritet: string;
-  };
-}
-
-interface Predmet {
-  predmetId: number;
-  nazivPredmeta: string;
-  status: string;
-  odgovornaOsoba: string;
-  prioritet: string;
-  kategorijaId: number;
-  kategorijaNaziv?: string;
-  brojUgrozenihLica?: number;
-  datumKreiranja?: string;
-  rokZaZavrsetak?: string;
-}
-
-const columnHelper = createMRTColumnHelper<UgrozenoLice>();
-
-const csvConfig = mkConfig({
-  fieldSeparator: ',',
-  decimalSeparator: '.',
-  useKeysAsHeaders: true,
-});
+const COLUMN_LABELS: Record<string, string> = {
+  ugrozenoLiceId: 'ID',
+  ime: 'Ime',
+  prezime: 'Prezime',
+  jmbg: 'JMBG',
+  datumRodjenja: 'Datum rođenja',
+  drzavaRodjenja: 'Država rođenja',
+  mestoRodjenja: 'Mesto rođenja',
+  opstinaRodjenja: 'Opština rođenja',
+  predmetId: 'ID predmeta',
+};
 
 export default function UgrozenaLicaPage() {
-  const { token } = useAuth();
+  const { user } = useAuth();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingUgrozenoLice, setEditingUgrozenoLice] = useState<UgrozenoLice | null>(null);
   const [ugrozenaLica, setUgrozenaLica] = useState<UgrozenoLice[]>([]);
-  const [predmeti, setPredmeti] = useState<Predmet[]>([]);
   const [loading, setLoading] = useState(true);
-  const [predmetiLoading, setPredmetiLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [toast, setToast] = useState<{msg: string, type: 'success'|'error'}|null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [columnOrder, setColumnOrder] = useState<string[]>(ALL_COLUMNS);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(ALL_COLUMNS);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterValues, setFilterValues] = useState<any>({});
+  const [activeTab, setActiveTab] = useState<'tabela' | 'statistika'>('tabela');
 
-  // Modal states
-  const [showModal, setShowModal] = useState(false);
-  const [editingLice, setEditingLice] = useState<UgrozenoLice | null>(null);
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const [formData, setFormData] = useState({
-    ime: '',
-    prezime: '',
-    jmbg: '',
-    datumRodjenja: '',
-    drzavaRodjenja: '',
-    mestoRodjenja: '',
-    opstinaRodjenja: '',
-    predmetId: 0
-  });
-
-  useEffect(() => {
-    if (token) {
-      fetchUgrozenaLica();
-      fetchPredmeti();
-    }
-  }, [token]);
-
-  const fetchUgrozenaLica = async () => {
+  const fetchUgrozenaLica = async (retryCount = 0) => {
+    setLoading(true);
     try {
       const params = new URLSearchParams();
-      const data = await apiService.getUgrozenaLica(params.toString(), token!);
-      setUgrozenaLica(data.content || data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
+      params.append('page', page.toString());
+      params.append('size', rowsPerPage.toString());
+      
+      // Dodaj filtere ako postoje
+      Object.entries(filterValues).forEach(([key, value]) => {
+        if (value && value !== '') params.append(key, String(value));
+      });
+
+      const res = await fetch(`/api/euk/ugrozena-lica?${params.toString()}`);
+      
+      if (!res.ok) {
+        // Posebno rukovanje za 429 greške (Too Many Requests)
+        if (res.status === 429) {
+          const errorData = await res.json();
+          const retryAfter = errorData.retryAfter || 60;
+          
+          if (retryCount < 3) {
+            // Eksponencijalni backoff
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+            setRetrying(true);
+            setToast({
+              msg: `Server je preopterećen. Pokušavam ponovo za ${Math.ceil(delay/1000)} sekundi...`,
+              type: 'error'
+            });
+            
+            setTimeout(() => {
+              setRetrying(false);
+              fetchUgrozenaLica(retryCount + 1);
+            }, delay);
+            return;
+          } else {
+            setToast({
+              msg: `Previše pokušaja. Molimo sačekajte ${retryAfter} sekundi pre ponovnog pokušaja.`,
+              type: 'error'
+            });
+            return;
+          }
+        }
+        
+        throw new Error(`HTTP greška: ${res.status}`);
+      }
+
+      const data: UgrozenoLiceResponse = await res.json();
+      
+      setUgrozenaLica(data.content || []);
+      setTotalPages(data.totalPages || 0);
+      setTotalElements(data.totalElements || 0);
+      
+      // Očisti toast ako je uspešno
+      if (toast && toast.type === 'error') {
+        setToast(null);
+      }
+    } catch (error) {
+      setToast({
+        msg: 'Greška pri dohvatanju ugroženih lica. Pokušajte ponovo.',
+        type: 'error'
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchPredmeti = async () => {
-    setPredmetiLoading(true);
+  // Debouncing za filtere - čekaj 500ms pre slanja zahteva
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchUgrozenaLica();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [page, rowsPerPage, filterValues]);
+
+  // Memoizuj fetchUgrozenaLica funkciju da izbegnemo infinite loop
+  const memoizedFetchUgrozenaLica = React.useCallback(fetchUgrozenaLica, [page, rowsPerPage, filterValues]);
+
+  const handleAdd = async (novo: UgrozenoLiceFormData) => {
     try {
-      const params = new URLSearchParams().toString();
-      const data = await apiService.getPredmeti(params, token!);
-      setPredmeti(data.content || data);
-    } catch (err) {
-      console.error('Greška pri učitavanju predmeta:', err);
-    } finally {
-      setPredmetiLoading(false);
+      const res = await fetch('/api/euk/ugrozena-lica', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(novo),
+      });
+      
+      if (res.ok) {
+        setToast({msg: 'Ugroženo lice uspešno dodato!', type: 'success'});
+        setModalOpen(false);
+        fetchUgrozenaLica();
+      } else {
+        // Posebno rukovanje za 429 greške
+        if (res.status === 429) {
+          const errorData = await res.json();
+          setToast({
+            msg: `Server je preopterećen. Molimo sačekajte ${errorData.retryAfter || 60} sekundi.`,
+            type: 'error'
+          });
+          return;
+        }
+        
+        const err = await res.json();
+        setToast({msg: err.error || 'Greška pri unosu.', type: 'error'});
+      }
+    } catch (error) {
+      setToast({msg: 'Greška pri unosu.', type: 'error'});
     }
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleExport = (columns: string[]) => {
+    const headers = columns.map(col => COLUMN_LABELS[col] || col);
+    const rows = ugrozenaLica.map((lice: UgrozenoLice) => {
+      return columns.map(col => {
+        const value = lice[col as keyof UgrozenoLice];
+        if (col === 'datumRodjenja' && value) {
+          return new Date(value).toLocaleDateString('sr-RS');
+        }
+        return value || '';
+      });
+    });
     
-    // Validacija - predmetId ne sme biti 0
-    if (!formData.predmetId || formData.predmetId === 0) {
-      setError('Молимо изаберите предмет');
-      return;
-    }
-    
-    try {
-      if (editingLice) {
-        await apiService.updateUgrozenoLice(editingLice.ugrozenoLiceId, formData, token!);
-      } else {
-        await apiService.createUgrozenoLice(formData, token!);
-      }
+    const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ugrozena-lica.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-      setShowModal(false);
-      setEditingLice(null);
-      resetForm();
-      fetchUgrozenaLica();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri čuvanju');
+  const handleSelect = (id: number, checked: boolean) => {
+    setSelectedIds(prev => checked ? [...prev, id] : prev.filter(x => x !== id));
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(ugrozenaLica.map(lice => lice.ugrozenoLiceId));
+    } else {
+      setSelectedIds([]);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Да ли сте сигурни да желите да обришете ово угрожено лице?')) {
-      return;
-    }
-
     try {
-      await apiService.deleteUgrozenoLice(id, token!);
-      fetchUgrozenaLica();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Greška pri brisanju');
+      const res = await fetch(`/api/euk/ugrozena-lica/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setToast({msg: 'Ugroženo lice uspešno obrisano!', type: 'success'});
+        fetchUgrozenaLica();
+      } else {
+        // Posebno rukovanje za 429 greške
+        if (res.status === 429) {
+          const errorData = await res.json();
+          setToast({
+            msg: `Server je preopterećen. Molimo sačekajte ${errorData.retryAfter || 60} sekundi.`,
+            type: 'error'
+          });
+          return;
+        }
+        
+        const err = await res.json();
+        setToast({msg: err.error || 'Greška pri brisanju.', type: 'error'});
+      }
+    } catch (error) {
+      setToast({msg: 'Greška pri brisanju.', type: 'error'});
     }
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const handleEdit = (lice: UgrozenoLice) => {
-    setEditingLice(lice);
-    setFormData({
-      ime: lice.ime,
-      prezime: lice.prezime,
-      jmbg: lice.jmbg,
-      datumRodjenja: lice.datumRodjenja,
-      drzavaRodjenja: lice.drzavaRodjenja,
-      mestoRodjenja: lice.mestoRodjenja,
-      opstinaRodjenja: lice.opstinaRodjenja,
-      predmetId: lice.predmetId
-    });
-    setShowModal(true);
+  const handleEdit = (ugrozenoLice: UgrozenoLice) => {
+    setEditingUgrozenoLice(ugrozenoLice);
+    setEditModalOpen(true);
   };
 
-  const resetForm = () => {
-    setFormData({
-      ime: '',
-      prezime: '',
-      jmbg: '',
-      datumRodjenja: '',
-      drzavaRodjenja: '',
-      mestoRodjenja: '',
-      opstinaRodjenja: '',
-      predmetId: 0
-    });
-  };
-
-  const getPredmetNaziv = (predmetId: number) => {
-    const predmet = predmeti.find(p => p.predmetId === predmetId);
-    return predmet?.nazivPredmeta || 'Непознато';
-  };
-
-  // Export functions
-  const handleExport = (selectedColumns: string[], format: string, data: Record<string, unknown>[]) => {
-    // Filter data to only include selected columns
-    const filteredData = data.map(item => {
-      const filteredItem: Record<string, unknown> = {};
-      selectedColumns.forEach(col => {
-        filteredItem[col] = item[col];
+  const handleUpdate = async (updatedUgrozenoLice: UgrozenoLiceFormData) => {
+    if (!editingUgrozenoLice) return;
+    try {
+      const res = await fetch(`/api/euk/ugrozena-lica/${editingUgrozenoLice.ugrozenoLiceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedUgrozenoLice),
       });
-      return filteredItem;
-    });
-
-    switch (format) {
-      case 'csv':
-        const csv = generateCsv(csvConfig)(filteredData as Record<string, string | number>[]);
-        download(csvConfig)(csv);
-        break;
-      case 'excel':
-        // Create Excel workbook
-        const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.json_to_sheet(filteredData);
+      if (res.ok) {
+        setToast({msg: 'Ugroženo lice uspešno ažurirano!', type: 'success'});
+        setEditModalOpen(false);
+        setEditingUgrozenoLice(null);
+        fetchUgrozenaLica();
+      } else {
+        // Posebno rukovanje za 429 greške
+        if (res.status === 429) {
+          const errorData = await res.json();
+          setToast({
+            msg: `Server je preopterećen. Molimo sačekajte ${errorData.retryAfter || 60} sekundi.`,
+            type: 'error'
+          });
+          return;
+        }
         
-        // Set column widths
-        const columnWidths = selectedColumns.map(col => ({ wch: Math.max(col.length, 15) }));
-        worksheet['!cols'] = columnWidths;
-        
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'UgrozenaLica');
-        XLSX.writeFile(workbook, 'ugrozena-lica.xlsx');
-        break;
-      case 'pdf':
-        // Create PDF with Unicode support
-        const pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'mm',
-          format: 'a4'
-        });
-        
-        // Add title
-        pdf.setFontSize(16);
-        pdf.text('Ugrozena lica', 14, 20);
-        
-        // Prepare table data
-        const tableData = filteredData.map(item => 
-          selectedColumns.map(col => item[col] || '')
-        );
-        
-        // Add table
-        autoTable(pdf, {
-          head: [selectedColumns.map(col => {
-            // Map ćirilične nazive na latinične za PDF kompatibilnost
-            const headerMap: Record<string, string> = {
-              'ugrozenoLiceId': 'ID',
-              'ime': 'Ime i prezime',
-              'jmbg': 'JMBG',
-              'datumRodjenja': 'Datum rodjenja',
-              'drzavaRodjenja': 'Drzava rodjenja',
-              'mestoRodjenja': 'Mesto rodjenja',
-              'opstinaRodjenja': 'Opstina rodjenja',
-              'predmetId': 'Predmet'
-            };
-            return headerMap[col] || col;
-          })],
-          body: tableData,
-          startY: 30,
-          styles: {
-            fontSize: 10,
-            cellPadding: 3,
-          },
-          headStyles: {
-            fillColor: [102, 126, 234],
-            textColor: 255,
-            fontStyle: 'bold',
-          },
-          alternateRowStyles: {
-            fillColor: [245, 245, 245],
-          },
-        });
-        
-        pdf.save('ugrozena-lica.pdf');
-        break;
-      default:
-        console.log('Unknown format:', format);
+        const err = await res.json();
+        setToast({msg: err.error || 'Greška pri ažuriranju.', type: 'error'});
+      }
+    } catch (error) {
+      setToast({msg: 'Greška pri ažuriranju.', type: 'error'});
     }
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const columns = [
-    columnHelper.accessor('ugrozenoLiceId', {
-      header: 'ID',
-      size: 120,
-      enableColumnFilter: false,
-    }),
-    columnHelper.accessor('ime', {
-      header: 'Име и презиме',
-      size: 350,
-      Cell: ({ row }) => (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-          }}
-        >
-          <Person sx={{ color: 'primary.main' }} />
-          <span>{`${row.original.ime} ${row.original.prezime}`}</span>
-        </Box>
-      ),
-    }),
-    columnHelper.accessor('jmbg', {
-      header: 'ЈМБГ',
-      size: 200,
-      enableClickToCopy: true,
-    }),
-    columnHelper.accessor('datumRodjenja', {
-      header: 'Датум рођења',
-      size: 180,
-      Cell: ({ cell }) => {
-        const date = cell.getValue<string>();
-        return date ? new Date(date).toLocaleDateString('sr-RS') : '-';
-      },
-    }),
-    columnHelper.accessor('drzavaRodjenja', {
-      header: 'Држава рођења',
-      size: 200,
-    }),
-    columnHelper.accessor('mestoRodjenja', {
-      header: 'Место рођења',
-      size: 200,
-    }),
-    columnHelper.accessor('opstinaRodjenja', {
-      header: 'Општина рођења',
-      size: 200,
-    }),
-    columnHelper.accessor('predmetId', {
-      header: 'Предмет',
-      size: 300,
-      Cell: ({ cell }) => (
-        <Chip
-          label={getPredmetNaziv(cell.getValue<number>())}
-          color="primary"
-          size="small"
-          variant="outlined"
-        />
-      ),
-      enableColumnFilter: false,
-    }),
-  ];
+  const handleToggleColumn = (col: string) => {
+    setVisibleColumns(cols => cols.includes(col) ? cols.filter(c => c !== col) : [...cols, col]);
+  };
 
-  const table = useMaterialReactTable({
-    columns,
-    data: ugrozenaLica,
-    enableRowSelection: true,
-    enableDensityToggle: false,
-    enableColumnResizing: true,
-    columnResizeMode: 'onChange',
-    columnFilterDisplayMode: 'popover',
-    paginationDisplayMode: 'pages',
-    positionToolbarAlertBanner: 'bottom',
-    renderTopToolbarCustomActions: ({ table }) => (
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          width: '100%',
-          padding: '8px',
-        }}
-      >
-        {/* Left side - Table title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/ikonice/table.svg" alt="Table" style={{ width: '32px', height: '32px' }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: '#1f2937' }}>
-            Табела
-          </Typography>
-        </Box>
+  // Sortiranje po srpskoj abecedi na frontendu
+  const handleSortByName = () => {
+    const sorted = [...ugrozenaLica].sort((a, b) => {
+      const imeA = `${a.ime || ''} ${a.prezime || ''}`.trim();
+      const imeB = `${b.ime || ''} ${b.prezime || ''}`.trim();
+      return imeA.localeCompare(imeB, 'sr', { sensitivity: 'base' });
+    });
+    setUgrozenaLica(sorted);
+  };
 
-        {/* Right side - Action buttons */}
-        <Box sx={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <Button
-            onClick={() => setExportDialogOpen(true)}
-            startIcon={<FileDownload />}
-            variant="contained"
-            color="primary"
-            sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
-              },
-            }}
-          >
-            Извоз
-          </Button>
-          <Button
-            onClick={() => {
-              setEditingLice(null);
-              resetForm();
-              setShowModal(true);
-            }}
-            startIcon={<Add />}
-            variant="contained"
-            color="success"
-            sx={{
-              background: 'linear-gradient(135deg, #4ade80 0%, #22c55e 100%)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #3bce6f 0%, #1da34a 100%)',
-              },
-            }}
-          >
-            Додај ново угрожено лице
-          </Button>
-          <Button
-            onClick={() => setShowFilters(!showFilters)}
-            variant="outlined"
-            color="primary"
-            sx={{
-              borderColor: '#667eea',
-              color: '#667eea',
-              '&:hover': {
-                borderColor: '#5a6fd8',
-                backgroundColor: 'rgba(102, 126, 234, 0.04)',
-              },
-            }}
-          >
-            Филтери
-          </Button>
-        </Box>
-      </Box>
-    ),
-    renderRowActionMenuItems: ({ row, closeMenu }) => [
-      <MenuItem
-        key={0}
-        onClick={() => {
-          handleEdit(row.original);
-          closeMenu();
-        }}
-        sx={{ m: 0 }}
-      >
-        <ListItemIcon>
-          <Edit />
-        </ListItemIcon>
-        Измени
-      </MenuItem>,
-      <MenuItem
-        key={1}
-        onClick={() => {
-          handleDelete(row.original.ugrozenoLiceId);
-          closeMenu();
-        }}
-        sx={{ m: 0 }}
-      >
-        <ListItemIcon>
-          <Delete />
-        </ListItemIcon>
-        Обриши
-      </MenuItem>,
-    ],
-  });
+  const handleSortByDatumRodjenja = () => {
+    const sorted = [...ugrozenaLica].sort((a, b) => {
+      const dA = a.datumRodjenja ? new Date(a.datumRodjenja).getTime() : 0;
+      const dB = b.datumRodjenja ? new Date(b.datumRodjenja).getTime() : 0;
+      return dB - dA;
+    });
+    setUgrozenaLica(sorted);
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  const handleSortByJmbg = () => {
+    const sorted = [...ugrozenaLica].sort((a, b) => {
+      return (a.jmbg || '').localeCompare(b.jmbg || '', 'sr');
+    });
+    setUgrozenaLica(sorted);
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-18 h-18 bg-[#3B82F6] rounded-lg flex items-center justify-center">
-              <img 
-                src="/ikoniceSidebar/beleIkonice/ugrozenaLicaBelo.png" 
-                alt="EUK Ugrožena lica" 
-                className="w-13 h-13"
-              />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">ЕУК Угрожена лица</h1>
-              <p className="text-lg text-gray-600">Управљање угроженим лицима за ЕУК систем</p>
-            </div>
+    <div className="p-8 w-full h-full">
+      {toast && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded shadow-lg text-white font-semibold transition ${toast.type==='success' ? 'bg-green-600' : 'bg-red-600'}`}>{toast.msg}</div>
+      )}
+      {/* Header sa naslovom */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 md:w-16 md:h-16 rounded-lg flex items-center justify-center" style={{backgroundColor: '#3A3CA6'}}>
+            <Image src="/ikoniceSidebar/beleIkonice/ugrozenaLicaBelo.png" alt="Ugrožena lica" width={40} height={40} />
           </div>
+          <h1 className="text-4xl font-bold ml-2">Ugrožena lica</h1>
         </div>
-
-        {error && (
-          <ErrorHandler error={error} onRetry={fetchUgrozenaLica} />
-        )}
-
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden border-2 border-gray-200">
-          {/* Filters Section */}
-          {showFilters && (
-            <div className="p-6 border-b border-gray-200 bg-gray-50">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Име и презиме</label>
-                  <input
-                    type="text"
-                    placeholder="Претражи по имену..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">ЈМБГ</label>
-                  <input
-                    type="text"
-                    placeholder="Претражи по ЈМБГ..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Држава рођења</label>
-                  <input
-                    type="text"
-                    placeholder="Претражи по држави..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Место рођења</label>
-                  <input
-                    type="text"
-                    placeholder="Претражи по месту..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Предмет</label>
-                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200">
-                    <option value="">Сви предмети</option>
-                    {predmeti.map((predmet) => (
-                      <option key={predmet.predmetId} value={predmet.predmetId}>
-                        {predmet.nazivPredmeta}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    sx={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      '&:hover': {
-                        background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
-                      },
-                    }}
-                  >
-                    Примени филтере
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <MaterialReactTable table={table} />
-        </div>
-
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-6">
-                  {editingLice ? 'Измени угрожено лице' : 'Додај ново угрожено лице'}
-                </h3>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Име</label>
-                    <input
-                      type="text"
-                      value={formData.ime}
-                      onChange={(e) => setFormData({...formData, ime: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Презиме</label>
-                    <input
-                      type="text"
-                      value={formData.prezime}
-                      onChange={(e) => setFormData({...formData, prezime: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">ЈМБГ</label>
-                    <input
-                      type="text"
-                      value={formData.jmbg}
-                      onChange={(e) => setFormData({...formData, jmbg: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      maxLength={13}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Датум рођења</label>
-                    <input
-                      type="date"
-                      value={formData.datumRodjenja}
-                      onChange={(e) => setFormData({...formData, datumRodjenja: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Држава рођења</label>
-                    <input
-                      type="text"
-                      value={formData.drzavaRodjenja}
-                      onChange={(e) => setFormData({...formData, drzavaRodjenja: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Место рођења</label>
-                    <input
-                      type="text"
-                      value={formData.mestoRodjenja}
-                      onChange={(e) => setFormData({...formData, mestoRodjenja: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Општина рођења</label>
-                    <input
-                      type="text"
-                      value={formData.opstinaRodjenja}
-                      onChange={(e) => setFormData({...formData, opstinaRodjenja: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Предмет</label>
-                    <select
-                      value={formData.predmetId || ''}
-                      onChange={(e) => {
-                        const selectedValue = e.target.value;
-                        let predmetId = 0;
-                        if (selectedValue && selectedValue !== '') {
-                          predmetId = Number(selectedValue);
-                          if (isNaN(predmetId)) {
-                            console.error('❌ Neuspešno parsiranje predmetId:', selectedValue);
-                            predmetId = 0;
-                          }
-                        }
-                        setFormData({...formData, predmetId: predmetId});
-                      }}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      required
-                      disabled={predmetiLoading}
-                    >
-                      <option value="">
-                        {predmetiLoading ? 'Учитавање предмета...' : 'Изабери предмет'}
-                      </option>
-                      {predmeti.map((predmet, index) => (
-                        <option key={predmet.predmetId || `predmet-${index}`} value={predmet.predmetId}>
-                          {predmet.nazivPredmeta}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex justify-end space-x-4 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowModal(false)}
-                      className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-all duration-200 hover:shadow-md"
-                    >
-                      Откажи
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg transition-all duration-200 hover:shadow-lg transform hover:-translate-y-0.5"
-                    >
-                      {editingLice ? 'Измени' : 'Додај'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <ExportDialog
-          open={exportDialogOpen}
-          onClose={() => setExportDialogOpen(false)}
-          columns={columns.map(col => ({ accessorKey: col.accessorKey as string, header: col.header as string }))}
-          data={ugrozenaLica as unknown as Record<string, unknown>[]}
-          onExport={handleExport}
-        />
       </div>
+      {/* Tabovi za prikaz */}
+      <div className="flex gap-8 border-b border-gray-200 mb-8 relative">
+        <button
+          className={`flex items-center gap-2 px-2 pb-2 font-semibold text-lg transition-colors duration-150 focus:outline-none cursor-pointer ${activeTab === 'tabela' ? 'text-indigo-700' : 'text-gray-800'}`}
+          style={{ position: 'relative' }}
+          onClick={() => setActiveTab('tabela')}
+        >
+          <Image src="/ikonice/table.svg" alt="Tabela" width={22} height={22} />
+          Tabela
+          {activeTab === 'tabela' && <span className="absolute left-0 right-0 -bottom-[2px] h-1 bg-indigo-600 rounded-full" />}
+        </button>
+        <button
+          className={`flex items-center gap-2 px-2 pb-2 font-semibold text-lg transition-colors duration-150 focus:outline-none cursor-pointer ${activeTab === 'statistika' ? 'text-indigo-700' : 'text-gray-800'}`}
+          style={{ position: 'relative' }}
+          onClick={() => setActiveTab('statistika')}
+        >
+          <Image src="/globe.svg" alt="Statistika" width={22} height={22} />
+          Statistika
+          {activeTab === 'statistika' && <span className="absolute left-0 right-0 -bottom-[2px] h-1 bg-indigo-600 rounded-full" />}
+        </button>
+      </div>
+      {/* Prikaz tabele ili statistike */}
+      {activeTab === 'tabela' ? (
+        <>
+          {/* Naslov tabele i kontrole */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
+            <div className="flex items-center gap-2">
+              <Image src="/ikonice/table.svg" alt="Tabela" width={28} height={28} />
+              <h2 className="text-3xl font-semibold">Tabela</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              {selectedIds.length > 0 && (
+                <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="delete" userId={user?.id}>
+                  <Button variant="destructive" onClick={async () => {
+                    const confirmed = window.confirm('Da li ste sigurni da želite da obrišete izabrana ugrožena lica?');
+                    if (confirmed) {
+                      for (const id of selectedIds) {
+                        await handleDelete(id);
+                      }
+                      setSelectedIds([]);
+                    }
+                  }} className="flex items-center gap-2 order-1 sm:order-none">
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><rect x="6" y="7" width="12" height="12" rx="2" stroke="#fff" strokeWidth="2"/><path d="M9 7V5a3 3 0 1 1 6 0v2" stroke="#fff" strokeWidth="2"/></svg>
+                    Obriši ({selectedIds.length})
+                  </Button>
+                </PermissionGuard>
+              )}
+              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id}>
+                <Button onClick={() => setModalOpen(true)} variant="default" className="font-semibold bg-[#3A3CA6] hover:bg-blue-700 active:bg-blue-800 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
+                    <path stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m7-7H5"/>
+                  </svg>
+                  Novo ugroženo lice
+                </Button>
+              </PermissionGuard>
+              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id}>
+                <Button variant="outline" onClick={() => setExportOpen(true)} className="hover:bg-gray-50 active:bg-gray-100 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">Izvoz</Button>
+              </PermissionGuard>
+              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id}>
+                <div className="relative">
+                  <Button variant="outline" onClick={() => setColumnsOpen(!columnsOpen)} className="flex items-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
+                    <span className="w-5 h-5 inline-block align-middle">
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <g id="columns-3-2" transform="translate(-2 -2)">
+                          <path id="secondary" fill="#2ca9bc" d="M4,3H20a1,1,0,0,1,1,1V7H3V4A1,1,0,0,1,4,3Z"/>
+                          <path id="primary" d="M15,7H9V21h6ZM3,7H21M20,21H4a1,1,0,0,1-1-1V4A1,1,0,0,1,4,3Z" fill="none" stroke="#000000" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/>
+                        </g>
+                      </svg>
+                    </span>
+                    Kolone <span className="ml-1 bg-indigo-600 text-white rounded px-2">{visibleColumns.length}</span>
+                  </Button>
+                  {columnsOpen && (
+                    <ColumnsMenu
+                      open={columnsOpen}
+                      onClose={() => setColumnsOpen(false)}
+                      selected={visibleColumns}
+                      onChange={(cols, visible) => {
+                        setColumnOrder(cols);
+                        setVisibleColumns(visible);
+                      }}
+                    />
+                  )}
+                </div>
+              </PermissionGuard>
+              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id}>
+                <Button variant="outline" onClick={() => setFilterOpen(true)} className="hover:bg-gray-50 active:bg-gray-100 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">Filteri</Button>
+              </PermissionGuard>
+            </div>
+          </div>
+          {/* Sadržaj tabele */}
+          <div className="overflow-x-auto w-full">
+            <UgrozenaLicaTable
+              ugrozenaLica={ugrozenaLica}
+              visibleColumns={visibleColumns}
+              columnOrder={columnOrder}
+              onOrderChange={setColumnOrder}
+              selectedIds={selectedIds}
+              onSelect={handleSelect}
+              onSelectAll={handleSelectAll}
+              allSelected={selectedIds.length === ugrozenaLica.length && ugrozenaLica.length > 0}
+              loading={loading}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onSortByName={handleSortByName}
+              onSortByDatumRodjenja={handleSortByDatumRodjenja}
+              onSortByJmbg={handleSortByJmbg}
+              columnsOpen={columnsOpen}
+              filterOpen={filterOpen}
+            />
+          </div>
+          {/* Pagination i ukupno stavki prikazujem samo ovde */}
+          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>Broj redova:</span>
+              <select
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400"
+                value={rowsPerPage}
+                onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
+              >
+                {[5, 10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="text-sm text-gray-600">
+              Ukupno stavki: <span className="font-medium">{totalElements}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button className="border border-gray-300 rounded px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer" onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}>Prethodna</button>
+              <button className="border border-blue-500 bg-blue-500 text-white rounded px-3 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">{page + 1}</button>
+              <button className="border border-gray-300 rounded px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer" onClick={() => setPage(p => Math.min(totalPages - 1, p+1))} disabled={page === totalPages - 1}>Sledeća</button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <UgrozenaLicaStatistika ugrozenaLica={ugrozenaLica} />
+      )}
+      {/* Modali i ostalo ostaje isto */}
+      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} defaultColumns={visibleColumns} />
+      {modalOpen && (
+        <NovoUgrozenoLiceModal open={modalOpen} onClose={() => setModalOpen(false)} onAdd={handleAdd} />
+      )}
+      {editModalOpen && editingUgrozenoLice && (
+        <UrediUgrozenoLiceModal
+          open={editModalOpen}
+          ugrozenoLice={editingUgrozenoLice}
+          onClose={() => { setEditModalOpen(false); setEditingUgrozenoLice(null); }}
+          onSave={handleUpdate}
+        />
+      )}
+
+      {filterOpen && (
+        <UgrozenaLicaFilter
+          open={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          onFilter={setFilterValues}
+          initialValues={filterValues}
+        />
+      )}
     </div>
   );
-}
+} 

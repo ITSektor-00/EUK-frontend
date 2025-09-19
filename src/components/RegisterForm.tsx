@@ -43,14 +43,23 @@ const RegisterForm: React.FC = () => {
     setLoading(true);
 
     try {
-      await register({
+      const response = await register({
         username: userData.username,
         email: userData.email,
         password: userData.password,
         firstName: userData.firstName,
         lastName: userData.lastName
       });
-      router.push('/dashboard');
+      
+      // Prikaži poruku iz backend-a
+      if (response && response.message) {
+        alert(response.message);
+      } else {
+        alert("Registracija je uspešna! Vaš nalog čeka odobrenje od administratora.");
+      }
+      
+      // Preusmeri na login stranicu
+      router.push('/login');
     } catch (error: unknown) {
       // Poboljšana obrada grešaka
       let errorMessage = 'Greška pri registraciji';

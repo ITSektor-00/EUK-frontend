@@ -97,28 +97,28 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
   
   console.log('Navbar token:', token); // Debug log
   
-  // Funkcija za proveru isteka token-a
-  const checkTokenExpiry = () => {
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const expiry = payload.exp * 1000; // konvertuj u milisekunde
-        
-        if (Date.now() >= expiry) {
-          console.log('Token je istekao!');
-          localStorage.removeItem('token');
-          // Redirect na login
-          window.location.href = '/login';
-          return false;
-        }
-        return true;
-      } catch (error) {
-        console.error('Greška pri proveri token-a:', error);
-        return false;
-      }
-    }
-    return false;
-  };
+  // Funkcija za proveru isteka token-a - trenutno neiskorišćena
+  // const checkTokenExpiry = () => {
+  //   if (token) {
+  //     try {
+  //       const payload = JSON.parse(atob(token.split('.')[1]));
+  //       const expiry = payload.exp * 1000; // konvertuj u milisekunde
+  //       
+  //       if (Date.now() >= expiry) {
+  //         console.log('Token je istekao!');
+  //         localStorage.removeItem('token');
+  //         // Redirect na login
+  //         window.location.href = '/login';
+  //         return false;
+  //       }
+  //       return true;
+  //     } catch (error) {
+  //       console.error('Greška pri proveri token-a:', error);
+  //       return false;
+  //     }
+  //   }
+  //   return false;
+  // };
 
   // Koristi prop user ako je prosleđen, inače koristi iz context-a
   const user = propUser || contextUser;
@@ -196,10 +196,10 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
   
   if (loading) {
     return (
-      <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#3B82F6' }}>
+      <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#4F46E5' }}>
         <div className="flex items-center gap-2 select-none">
           <div className="w-9 h-9 bg-gray-300 rounded animate-pulse"></div>
-          <span className="hidden sm:inline font-semibold text-xl tracking-wide text-white">EUK Platforma</span>
+          <span className="hidden sm:inline font-semibold text-xl tracking-wide text-white">ЕУК Платформа</span>
         </div>
         
         {/* Centralni naslov - loading stanje */}
@@ -218,7 +218,7 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#3B82F6' }}>
+    <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#4F46E5' }}>
       {/* Leva strana: logo i naziv */}
       <div className="flex items-center gap-2 select-none">
         <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-200">
@@ -231,7 +231,7 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
             style={{ display: 'inline-block' }}
             priority
           />
-          <span className="hidden sm:inline font-semibold text-xl tracking-wide text-white" style={{fontFamily: 'InterVariable, sans-serif', letterSpacing: '0.04em'}}>EUK Platforma</span>
+          <span className="hidden sm:inline font-semibold text-xl tracking-wide text-white" style={{fontFamily: 'InterVariable, sans-serif', letterSpacing: '0.04em'}}>ЕУК Платформа</span>
         </Link>
       </div>
       
@@ -255,7 +255,7 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
         {/* Profil dugme uvek vidljivo */}
         <div className="relative ml-1 profile-dropdown">
           <button
-            className="inline-flex items-center justify-center w-9 h-9 rounded-full focus:outline-none transition-colors duration-200 overflow-hidden hover:bg-white/10"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full focus:outline-none transition-colors duration-200 overflow-hidden hover:bg-white/20"
             onClick={() => user && setProfilOpen(v => !v)}
             aria-label="Profil"
           >

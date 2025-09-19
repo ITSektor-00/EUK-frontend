@@ -11,23 +11,29 @@ interface User {
   lastName: string;
   role: string;
   isActive: boolean;
+  isApproved: boolean;
+  nivoPristupa: number;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (credentials: { usernameOrEmail: string; password: string }) => Promise<void>;
+  login: (credentials: { usernameOrEmail: string; password: string }) => Promise<any>;
   register: (userData: {
     username: string;
     email: string;
     password: string;
     firstName: string;
     lastName: string;
-  }) => Promise<void>;
+  }) => Promise<any>;
   logout: () => void;
   updateToken: (newToken: string) => void;
   isAuthenticated: boolean;
+  isAdmin: boolean;
+  isApproved: boolean;
+  needsApproval: boolean;
+  nivoPristupa: number;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,11 +45,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const loadUser = useCallback(async () => {
     try {
-      const userData = await apiService.getCurrentUser(token!);
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      
+      const userData = await apiService.getCurrentUser(token);
       setUser(userData);
     } catch (error) {
       console.error('Error loading user:', error);
-      logout();
+      
+      // Proveri da li je greška vezana za autentifikaciju
+      const errorMessage = error instanceof Error ? error.message : '';
+      if (errorMessage.includes('401') || errorMessage.includes('sesija') || errorMessage.includes('token')) {
+        console.warn('Token je istekao ili je nevažeći, brišem sesiju');
+        logout();
+      } else {
+        // Za ostale greške, samo loguj bez brisanja sesije
+        console.warn('Greška pri učitavanju korisnika, ali zadržavam sesiju:', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -81,8 +101,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await apiService.signIn(credentials);
       
-      if (response.error) {
-        throw new Error(response.error);
+      // Proverava da li je korisnik neodobren - samo vraćamo response bez bacanja greške
+      if (response && response.success === false && response.code === 'ACCOUNT_PENDING_APPROVAL') {
+        return response; // Vraćamo response direktno bez bacanja greške
+      }
+      
+      // Proveri da li je response validan i ima potrebna polja
+      if (!response || !response.token) {
+        throw new Error('Neispravan odgovor od servera. Token nije pronađen.');
       }
       
       setToken(response.token);
@@ -93,12 +119,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         firstName: response.firstName || '',
         lastName: response.lastName || '',
         role: response.role,
-        isActive: response.isActive !== undefined ? response.isActive : true
+        isActive: response.isActive !== undefined ? response.isActive : true,
+        isApproved: response.isApproved !== undefined ? response.isApproved : false,
+        nivoPristupa: response.nivoPristupa || 1
       });
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', response.token);
       }
     } catch (error) {
+      console.error('Login error:', error);
       throw error;
     }
   };
@@ -113,8 +142,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await apiService.signUp(userData);
       
-      if (response.error) {
-        throw new Error(response.error);
+      // Proveri da li je response validan i ima potrebna polja
+      if (!response || !response.token) {
+        throw new Error('Neispravan odgovor od servera. Token nije pronađen.');
       }
       
       setToken(response.token);
@@ -125,12 +155,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         firstName: response.firstName || '',
         lastName: response.lastName || '',
         role: response.role,
-        isActive: response.isActive !== undefined ? response.isActive : true
+        isActive: response.isActive !== undefined ? response.isActive : true,
+        isApproved: response.isApproved !== undefined ? response.isApproved : false,
+        nivoPristupa: response.nivoPristupa || 1
       });
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', response.token);
       }
     } catch (error) {
+      console.error('Registration error:', error);
       throw error;
     }
   };
@@ -159,7 +192,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       register,
       logout,
       updateToken,
-      isAuthenticated: !!token
+      isAuthenticated: !!token,
+      isAdmin: user?.role === 'admin' || user?.role === 'ADMIN',
+      isApproved: user?.isApproved || false,
+      needsApproval: user ? !user.isApproved : false,
+      nivoPristupa: user?.nivoPristupa || 1
     }}>
       {children}
     </AuthContext.Provider>

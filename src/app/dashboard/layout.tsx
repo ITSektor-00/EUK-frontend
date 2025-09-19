@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 import SidebarNav from '../SidebarNav';
 import Navbar from '../Navbar';
@@ -13,12 +14,25 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin, loading } = useAuth();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    // Ako je admin, preusmeri na admin dashboard
+    if (!loading && isAdmin) {
+      router.push('/admin');
+    }
+  }, [isAdmin, loading, router]);
 
   const handleLogout = () => {
     logout();
   };
+
+  // Ako je admin, ne prikazuj ovaj layout
+  if (isAdmin) {
+    return null;
+  }
 
   return (
     <ProtectedRoute>
@@ -38,6 +52,7 @@ export default function DashboardLayout({
               <SidebarNav 
                 sidebarOpen={sidebarOpen}
                 onToggle={() => setSidebarOpen(!sidebarOpen)}
+                userId={user?.id || null}
               />
             </div>
 

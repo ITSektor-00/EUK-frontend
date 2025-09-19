@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { ProtectedRoute } from '../../../components/ProtectedRoute';
 import {
@@ -43,22 +43,24 @@ export default function KategorijePage() {
     naziv: ''
   });
 
-  useEffect(() => {
-    if (token) {
-      fetchKategorije();
-    }
-  }, [token]);
-
-  const fetchKategorije = async () => {
+  const fetchKategorije = useCallback(async () => {
+    if (!token) return;
+    
     try {
-      const data = await apiService.getKategorije(token!);
+      const data = await apiService.getKategorije(token);
       setKategorije(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      fetchKategorije();
+    }
+  }, [fetchKategorije]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,7 +208,7 @@ export default function KategorijePage() {
     columnFilterDisplayMode: 'popover',
     paginationDisplayMode: 'pages',
     positionToolbarAlertBanner: 'bottom',
-    renderTopToolbarCustomActions: ({ table }) => (
+    renderTopToolbarCustomActions: () => (
       <Box
         sx={{
           display: 'flex',

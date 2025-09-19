@@ -17,10 +17,10 @@ export default function DashboardPage() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Dobrodošli, {user?.username || 'Korisnik'}! 👋
+            Добродошли, {user?.username || 'Korisnik'}! 👋
           </h1>
           <p className="text-lg text-gray-600">
-            Evo pregleda vašeg ЕУК sistema i najnovijih aktivnosti.
+            Ево прегледа вашег ЕУК  система и најновијих активности.
           </p>
         </div>
 
