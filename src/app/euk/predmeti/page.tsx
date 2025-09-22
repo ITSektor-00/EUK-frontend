@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
 import ErrorHandler from '../../components/ErrorHandler';
@@ -75,9 +75,7 @@ export default function PredmetiPage() {
   const [showDetaljiModal, setShowDetaljiModal] = useState(false);
   const [selectedPredmet, setSelectedPredmet] = useState<Predmet | null>(null);
   
-  // Custom kebab menu states
-  const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
-  const [activeKebabMenu, setActiveKebabMenu] = useState<string | null>(null);
+  // Sort configuration
   const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
   
 
@@ -99,20 +97,6 @@ export default function PredmetiPage() {
     setRefreshing(false);
   };
 
-  // Close kebab menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (activeKebabMenu) {
-        const target = event.target as Element;
-        if (!target.closest('.kebab-menu-container')) {
-          setActiveKebabMenu(null);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activeKebabMenu]);
 
 
 
@@ -203,7 +187,6 @@ export default function PredmetiPage() {
   // Custom kebab menu functions
   const handleSort = (field: string, direction: 'asc' | 'desc') => {
     setSortConfig({ field, direction });
-    setActiveKebabMenu(null);
     
     // Apply sorting to predmeti
     const sortedPredmeti = [...predmeti].sort((a, b) => {
@@ -235,114 +218,15 @@ export default function PredmetiPage() {
 
   const handleFilter = (_field: string) => {
     setShowFilters(true);
-    setActiveKebabMenu(null);
   };
 
-  // const closeKebabMenu = () => {
-  //   setActiveKebabMenu(null);
-  // };
 
-  // Custom kebab header renderer
-  const renderKebabHeader = (field: string, title: string) => {
-    const isOpen = activeKebabMenu === field;
-    const isHovered = hoveredColumn === field;
-    const currentSort = sortConfig?.field === field ? sortConfig.direction : null;
-    
+  // Simple header renderer - no kebab menu
+  const renderSimpleHeader = useCallback((title: string) => {
     return (
-      <div 
-        className="flex items-center w-full relative group"
-        onMouseEnter={() => setHoveredColumn(field)}
-        onMouseLeave={() => setHoveredColumn(null)}
-      >
-        <span className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200 flex-1">{title}</span>
-        
-        {/* Hamburger menu container - positioned to the left of resize handle */}
-        <div className="flex items-center gap-2">
-          {/* Hamburger button */}
-          <div className="relative">
-            <button 
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setActiveKebabMenu(isOpen ? null : field);
-              }}
-              onMouseDown={(e) => e.preventDefault()}
-              className={`p-1.5 rounded-md transition-all duration-200 ${
-                isHovered 
-                  ? 'opacity-100' 
-                  : 'opacity-0'
-              } ${isOpen 
-                ? 'bg-blue-100 text-blue-600' 
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-              }`}
-              title="Сортирање"
-              style={{ 
-                pointerEvents: isHovered ? 'auto' : 'none',
-                visibility: isHovered ? 'visible' : 'hidden'
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-              </svg>
-            </button>
-            
-            {/* Dropdown menu */}
-            {isOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[10000] min-w-[180px] overflow-hidden">
-                <div className="py-1">
-                  <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-                    <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Сортирање</p>
-                  </div>
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleSort(field, 'asc');
-                    }}
-                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 cursor-pointer transition-all duration-200 ${
-                      currentSort === 'asc' 
-                        ? 'bg-blue-50 text-blue-700 font-semibold' 
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
-                    </svg>
-                    <span>А-Ш</span>
-                    {currentSort === 'asc' && (
-                      <div className="ml-auto w-2 h-2 bg-blue-600 rounded-full"></div>
-                    )}
-                  </button>
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleSort(field, 'desc');
-                    }}
-                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 cursor-pointer transition-all duration-200 ${
-                      currentSort === 'desc' 
-                        ? 'bg-blue-50 text-blue-700 font-semibold' 
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
-                    </svg>
-                    <span>Ш-А</span>
-                    {currentSort === 'desc' && (
-                      <div className="ml-auto w-2 h-2 bg-blue-600 rounded-full"></div>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          {/* Space for resize handle */}
-          <div className="w-2"></div>
-        </div>
-      </div>
+      <span className="font-semibold text-gray-900">{title}</span>
     );
-  };
+  }, []);
 
 
 
@@ -483,13 +367,13 @@ export default function PredmetiPage() {
       headerName: 'назив предмета', 
       width: 280,
       flex: 1,
-      renderHeader: () => renderKebabHeader('nazivPredmeta', 'назив предмета')
+      renderHeader: () => renderSimpleHeader('назив предмета')
     },
     { 
       field: 'status', 
       headerName: 'статус', 
       width: 140,
-      renderHeader: () => renderKebabHeader('status', 'статус'),
+      renderHeader: () => renderSimpleHeader('статус'),
       renderCell: (params: GridRenderCellParams) => {
         const status = params.value;
         let bgColor = '#f3f4f6';
@@ -553,7 +437,7 @@ export default function PredmetiPage() {
       field: 'prioritet', 
       headerName: 'приоритет', 
       width: 140,
-      renderHeader: () => renderKebabHeader('prioritet', 'приоритет'),
+      renderHeader: () => renderSimpleHeader('приоритет'),
       renderCell: (params: GridRenderCellParams) => {
         const prioritet = params.value;
         let bgColor = '#f3f4f6';
@@ -617,13 +501,13 @@ export default function PredmetiPage() {
       field: 'odgovornaOsoba', 
       headerName: 'одговорна особа', 
       width: 200,
-      renderHeader: () => renderKebabHeader('odgovornaOsoba', 'одговорна особа')
+      renderHeader: () => renderSimpleHeader('одговорна особа')
     },
     { 
       field: 'rokZaZavrsetak', 
       headerName: 'рок за завршетак', 
       width: 180,
-      renderHeader: () => renderKebabHeader('rokZaZavrsetak', 'рок за завршетак'),
+      renderHeader: () => renderSimpleHeader('рок за завршетак'),
       renderCell: (params: GridRenderCellParams) => (
         params.value ? new Date(params.value).toLocaleDateString('sr-RS') : '-'
       )
@@ -632,7 +516,7 @@ export default function PredmetiPage() {
          field: 'kategorijaId', 
          headerName: 'категорија', 
          width: 200,
-         renderHeader: () => renderKebabHeader('kategorijaId', 'категорија'),
+         renderHeader: () => renderSimpleHeader('категорија'),
        renderCell: (params: GridRenderCellParams) => (
          getKategorijaNaziv(params.value)
        )
@@ -675,7 +559,7 @@ export default function PredmetiPage() {
                 </div>
               )
             },
-   ]), [kategorije, getKategorijaNaziv, renderKebabHeader, router]);
+   ]), [kategorije, getKategorijaNaziv, renderSimpleHeader, router]);
 
   // Filter states
   const [filters, setFilters] = useState({

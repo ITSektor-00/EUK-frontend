@@ -25,8 +25,6 @@ class WebSocketService {
 
   private connect(): void {
     try {
-      console.log('WebSocketService: Connecting to WebSocket...');
-      
       // Dinamički određivanje WebSocket URL-a na osnovu environment-a
       const getWebSocketUrl = () => {
         if (typeof window === 'undefined') {
@@ -45,14 +43,11 @@ class WebSocketService {
       };
       
       const wsUrl = getWebSocketUrl();
-      console.log('WebSocketService: Connecting to:', wsUrl);
       
       const socket = new SockJS(wsUrl);
       this.stompClient = new Client({
         webSocketFactory: () => socket,
-        debug: (str) => {
-          console.log('STOMP Debug:', str);
-        },
+        debug: () => {},
         reconnectDelay: 5000,
         heartbeatIncoming: 4000,
         heartbeatOutgoing: 4000,
@@ -64,13 +59,11 @@ class WebSocketService {
 
       this.stompClient.activate();
     } catch (error) {
-      console.error('WebSocketService: Failed to create connection:', error);
       this.handleConnectionError();
     }
   }
 
   private handleConnect(frame: any): void {
-    console.log('WebSocketService: STOMP Connected:', frame);
     this.isConnected = true;
     this.reconnectAttempts = 0;
     
@@ -81,19 +74,15 @@ class WebSocketService {
   }
 
   private handleStompError(frame: any): void {
-    console.error('WebSocketService: STOMP Error:', frame.headers['message']);
-    console.error('WebSocketService: STOMP Error Details:', frame.body);
     this.isConnected = false;
   }
 
   private handleWebSocketError(error: any): void {
-    console.error('WebSocketService: WebSocket Error:', error);
     this.isConnected = false;
     this.handleConnectionError();
   }
 
   private handleWebSocketClose(event: any): void {
-    console.log('WebSocketService: WebSocket connection closed:', event);
     this.isConnected = false;
     this.handleConnectionError();
   }
@@ -101,24 +90,19 @@ class WebSocketService {
   private handleConnectionError(): void {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`WebSocketService: Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
       setTimeout(() => {
         this.connect();
       }, 5000 * this.reconnectAttempts); // Exponential backoff
-    } else {
-      console.error('WebSocketService: Max reconnection attempts reached');
     }
   }
 
   private subscribeToTopic(topic: string, callback: (message: any) => void): void {
     if (this.stompClient && this.stompClient.connected) {
-      console.log(`WebSocketService: Subscribing to topic: ${topic}`);
       this.stompClient.subscribe(topic, (message) => {
         try {
           const data = JSON.parse(message.body);
           callback(data);
         } catch (error) {
-          console.error('WebSocketService: Error parsing message:', error);
           callback(message.body);
         }
       });
@@ -137,18 +121,14 @@ class WebSocketService {
   public unsubscribe(topic: string): void {
     this.subscriptions.delete(topic);
     // Note: STOMP.js doesn't provide unsubscribe method in current version
-    console.log(`WebSocketService: Unsubscribed from topic: ${topic}`);
   }
 
   public publish(destination: string, message: any): void {
     if (this.stompClient && this.stompClient.connected) {
-      console.log(`WebSocketService: Publishing message to ${destination}:`, message);
       this.stompClient.publish({
         destination,
         body: JSON.stringify(message)
       });
-    } else {
-      console.warn('WebSocketService: Cannot publish message - not connected');
     }
   }
 
@@ -167,7 +147,6 @@ class WebSocketService {
 
   public disconnect(): void {
     if (this.stompClient && this.stompClient.connected) {
-      console.log('WebSocketService: Disconnecting...');
       this.stompClient.deactivate();
       this.isConnected = false;
       this.subscriptions.clear();

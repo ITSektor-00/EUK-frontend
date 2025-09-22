@@ -3,10 +3,9 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import RouteService from '@/services/routeService';
 
-// Nivoi pristupa - samo tri osnovne uloge
+// Nivoi pristupa - pojednostavljen sistem
 export const NIVOI_PRISTUPA = {
-  2: "✍️ Потписник",
-  3: "📋 Обрађивач предмета", 
+  1: "👤 Корисник",
   5: "👑 Администратор"
 };
 
@@ -52,8 +51,8 @@ export const RouteGuard: React.FC<RouteGuardProps> = ({
         return;
       }
 
-      const userNivo = user.nivoPristupa || 2;
-      const role = user.role?.toUpperCase() || 'POTPISNIK';
+      const userNivo = user.nivoPristupa || 1;
+      const role = user.role?.toUpperCase() || 'KORISNIK';
       
       setUserLevel(userNivo);
       setLevelName((NIVOI_PRISTUPA as any)[userNivo] || "❌ Нема приступ");

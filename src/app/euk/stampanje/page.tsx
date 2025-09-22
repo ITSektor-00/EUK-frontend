@@ -14,16 +14,47 @@ export default function StampanjePage() {
     fetchUgrozenaLica();
   }, []);
 
-  const fetchUgrozenaLica = async () => {
+  const fetchUgrozenaLica = async (retryCount = 0) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/euk/ugrozena-lica?size=1000');
+      const res = await fetch('/api/euk/ugrozena-lica?size=100');
       if (!res.ok) {
-        throw new Error('Greška pri dohvatanju podataka');
+        // Posebno rukovanje za 429 greške (Too Many Requests)
+        if (res.status === 429) {
+          const errorData = await res.json();
+          const retryAfter = errorData.retryAfter || 60;
+          
+          if (retryCount < 3) {
+            // Eksponencijalni backoff
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+            setToast({
+              msg: `Server je preopterećen. Pokušavam ponovo za ${Math.ceil(delay/1000)} sekundi...`,
+              type: 'error'
+            });
+            
+            setTimeout(() => {
+              fetchUgrozenaLica(retryCount + 1);
+            }, delay);
+            return;
+          } else {
+            setToast({
+              msg: `Previše pokušaja. Molimo sačekajte ${retryAfter} sekundi pre ponovnog pokušaja.`,
+              type: 'error'
+            });
+            return;
+          }
+        }
+        
+        throw new Error(`HTTP greška: ${res.status}`);
       }
 
       const data: UgrozenoLiceResponse = await res.json();
       setUgrozenaLica(data.content || []);
+      
+      // Očisti toast ako je uspešno
+      if (toast && toast.type === 'error') {
+        setToast(null);
+      }
     } catch (error) {
       console.error('Error fetching ugrozena lica:', error);
       setToast({msg: 'Greška pri dohvatanju ugroženih lica', type: 'error'});

@@ -349,8 +349,7 @@ export default function KorisniciPage() {
   const getRoleBadge = (role: string) => {
     const roleColors = {
       'admin': 'bg-purple-100 text-purple-800',
-      'obradjivaci predmeta': 'bg-orange-100 text-orange-800',
-      'potpisnik': 'bg-blue-100 text-blue-800'
+      'korisnik': 'bg-blue-100 text-blue-800'
     };
     
     return (
@@ -433,9 +432,8 @@ export default function KorisniciPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Све роле</option>
-                <option value="ADMIN">Admin</option>
-                <option value="obradjivaci predmeta">Obrađivači predmeta</option>
-                <option value="potpisnik">Potpisnik</option>
+                <option value="admin">Admin</option>
+                <option value="korisnik">Korisnik</option>
               </select>
             </div>
             
@@ -536,9 +534,8 @@ export default function KorisniciPage() {
                     onChange={(e) => handleRoleChange(user.id, e.target.value)}
                     className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="ADMIN">Admin</option>
-                    <option value="obradjivaci predmeta">Obrađivači predmeta</option>
-                    <option value="potpisnik">Potpisnik</option>
+                    <option value="admin">Admin</option>
+                    <option value="korisnik">Korisnik</option>
                   </select>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

@@ -66,7 +66,6 @@ class ApiService {
 
   // Helper za API pozive sa token-om
   async apiCall(endpoint: string, options: RequestInit = {}, token?: string, retries: number = 1, useCache: boolean = false, cacheTTL: number = 30000): Promise<any> {
-    console.log(`API Call: ${endpoint}`, { method: options.method, useCache, token: token ? 'present' : 'missing' });
     
     // Validacija token-a ako je potreban
     if (token && typeof token !== 'string') {
@@ -82,7 +81,6 @@ class ApiService {
     const timeSinceLastRequest = now - this.lastRequestTime;
     if (timeSinceLastRequest < this.minRequestInterval) {
       const delay = this.minRequestInterval - timeSinceLastRequest;
-      console.log(`Rate limiting: waiting ${delay}ms before request to ${endpoint}`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
     this.lastRequestTime = Date.now();
@@ -92,7 +90,6 @@ class ApiService {
     
     // Check if same request is already pending
     if (this.pendingRequests.has(requestKey)) {
-      console.log(`Request deduplication: waiting for existing request to ${endpoint}`);
       return this.pendingRequests.get(requestKey);
     }
     
@@ -101,7 +98,6 @@ class ApiService {
       const cacheKey = this.getCacheKey(endpoint, { token: token?.substring(0, 10) });
       const cached = this.getFromCache(cacheKey);
       if (cached) {
-        console.log(`Cache hit for ${endpoint}`);
         return cached;
       }
     }
@@ -157,8 +153,6 @@ class ApiService {
             errorData,
             headers: Object.fromEntries(response.headers.entries())
           });
-        } else {
-          console.warn(`API endpoint ${url} returned 500 - likely not implemented on backend`);
         }
         
         // Handle specific HTTP status codes
@@ -172,7 +166,6 @@ class ApiService {
           // Retry for rate limiting with exponential backoff
           if (retries > 0) {
             const backoffDelay = Math.pow(2, 3 - retries) * 1000; // 1s, 2s, 4s
-            console.log(`Rate limited, retrying in ${backoffDelay}ms (${retries} retries left)`);
             await new Promise(resolve => setTimeout(resolve, backoffDelay));
             return this.executeRequest(url, options, headers, endpoint, token, retries - 1, useCache, cacheTTL);
           }
@@ -181,7 +174,6 @@ class ApiService {
           // For 500 errors, retry ako je moguće
           if (retries > 0) {
             const backoffDelay = Math.pow(2, 3 - retries) * 1000;
-            console.log(`Server error ${response.status}, retrying in ${backoffDelay}ms (${retries} retries left)`);
             await new Promise(resolve => setTimeout(resolve, backoffDelay));
             return this.executeRequest(url, options, headers, endpoint, token, retries - 1, useCache, cacheTTL);
           }
@@ -199,32 +191,7 @@ class ApiService {
       let data;
       try {
         data = await response.json();
-        console.log(`API Response for ${endpoint}:`, data);
-        console.log(`Response data type:`, typeof data);
-        console.log(`Response data keys:`, Object.keys(data || {}));
-        if (Array.isArray(data)) {
-          console.log(`Response is array with ${data.length} items`);
-        } else if (data && typeof data === 'object') {
-          console.log(`Response is object with keys:`, Object.keys(data));
-          if (data.users) {
-            console.log(`Response.users is array:`, Array.isArray(data.users), `with ${data.users?.length || 0} items`);
-          }
-          if (data.content) {
-            console.log(`Response.content is array:`, Array.isArray(data.content), `with ${data.content?.length || 0} items`);
-          }
-          if (data.totalElements) {
-            console.log(`Response.totalElements:`, data.totalElements);
-          }
-          if (data.totalPages) {
-            console.log(`Response.totalPages:`, data.totalPages);
-          }
-        }
       } catch (jsonError) {
-        if (response.status !== 500) {
-          console.error(`Failed to parse JSON response from ${endpoint}:`, jsonError);
-          const responseText = await response.text();
-          console.error(`Response text:`, responseText);
-        }
         throw new Error(`Server returned invalid JSON response. Status: ${response.status}`);
       }
       
@@ -377,7 +344,6 @@ class ApiService {
 
       return data;
     } catch (error) {
-      console.error('SignUp error:', error);
       throw error;
     }
   }
@@ -422,7 +388,6 @@ class ApiService {
       
       return false;
     } catch (error) {
-      console.warn('Error checking username availability:', error);
       return false;
     }
   }
@@ -497,7 +462,6 @@ class ApiService {
 
       return data;
     } catch (error) {
-      console.error('SignIn error:', error);
       throw error;
     }
   }
@@ -560,7 +524,6 @@ class ApiService {
 
   // Admin endpoints
   async getAllUsers(token: string, useCache: boolean = true, cacheTTL: number = 60000) {
-    console.log('getAllUsers called');
     return this.apiCall('/api/admin/users', { method: 'GET' }, token, 1, useCache, cacheTTL);
   }
 
@@ -576,15 +539,7 @@ class ApiService {
       ...(filters?.search && { search: filters.search })
     });
     
-    console.log('getUsersWithPagination called with:', { page, size, filters });
-    console.log('Using page from filters:', filters?.page !== undefined ? filters.page : page);
     const endpoint = `/api/admin/users?${params.toString()}`;
-    console.log('API endpoint:', endpoint);
-    console.log('URLSearchParams:', params.toString());
-    console.log('Individual params:');
-    for (const [key, value] of params.entries()) {
-      console.log(`  ${key}: ${value}`);
-    }
     
     return this.apiCall(endpoint, { method: 'GET' }, token, 1, useCache, cacheTTL);
   }
@@ -722,7 +677,6 @@ class ApiService {
     try {
       return await this.apiCall('/api/admin/routes', { method: 'GET' }, token, 1, true, 60000);
     } catch {
-      console.warn('Backend routes API not implemented (500 error), using fallback data');
       // Fallback data - sve rute sa nivoima
       return [
         {
@@ -822,7 +776,6 @@ class ApiService {
     try {
       return await this.apiCall('/api/admin/user-routes', { method: 'GET' }, token, 1, true, 60000);
     } catch {
-      console.warn('Backend user-routes API not implemented (500 error), using fallback data');
       return [];
     }
   }
@@ -832,7 +785,6 @@ class ApiService {
     try {
       return await this.apiCall(`/api/admin/user-routes/${userId}`, { method: 'GET' }, token, 1, true, 60000);
     } catch {
-      console.warn('Backend user-routes by userId API not implemented (500 error), using fallback data');
       return [];
     }
   }
@@ -855,7 +807,6 @@ class ApiService {
         nivoDozvola: Number(nivoDozvola)
       };
 
-      console.log('Creating user route with data:', requestBody);
 
       return await this.apiCall('/api/admin/user-routes', {
         method: 'POST',
@@ -863,7 +814,6 @@ class ApiService {
         body: JSON.stringify(requestBody)
       }, token, 3, false, 0); // 3 retries, no cache
     } catch (error) {
-      console.error('Error creating user route:', error);
       throw error; // Ne simuliraj uspeh, baci grešku
     }
   }
@@ -884,7 +834,6 @@ class ApiService {
         nivoDozvola: Number(nivoDozvola)
       };
 
-      console.log('Updating user route with data:', { userId, routeId, ...requestBody });
 
       return await this.apiCall(`/api/admin/user-routes/${userId}/${routeId}`, {
         method: 'PUT',
@@ -892,7 +841,6 @@ class ApiService {
         body: JSON.stringify(requestBody)
       }, token, 3, false, 0); // 3 retries, no cache
     } catch (error) {
-      console.error('Error updating user route:', error);
       throw error; // Ne simuliraj uspeh, baci grešku
     }
   }
@@ -905,13 +853,11 @@ class ApiService {
         throw new Error('userId i routeId su obavezni');
       }
 
-      console.log('Deleting user route:', { userId, routeId });
 
       return await this.apiCall(`/api/admin/user-routes/${userId}/${routeId}`, { 
         method: 'DELETE' 
       }, token, 3, false, 0); // 3 retries, no cache
     } catch (error) {
-      console.error('Error deleting user route:', error);
       throw error; // Ne simuliraj uspeh, baci grešku
     }
   }

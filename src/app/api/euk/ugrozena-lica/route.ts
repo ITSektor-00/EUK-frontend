@@ -7,7 +7,7 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
 // Rate limiting konfiguracija
 const RATE_LIMIT_WINDOW = 60000; // 1 minut
-const MAX_REQUESTS_PER_WINDOW = 30; // maksimalno 30 zahteva u minutu
+const MAX_REQUESTS_PER_WINDOW = 100; // maksimalno 100 zahteva u minutu (povećano za development)
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();

@@ -10,8 +10,7 @@ interface AdminStats {
   activeUsers: number;
   pendingUsers: number;
   adminUsers: number;
-  obradjivaciUsers: number;
-  potpisnikUsers: number;
+  korisnikUsers: number;
 }
 
 interface PendingUser {
@@ -31,8 +30,7 @@ export default function AdminDashboard() {
     activeUsers: 0,
     pendingUsers: 0,
     adminUsers: 0,
-    obradjivaciUsers: 0,
-    potpisnikUsers: 0
+    korisnikUsers: 0
   });
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,13 +62,12 @@ export default function AdminDashboard() {
       const activeUsers = allUsers.filter((u: any) => u.isActive).length;
       const pendingUsers = allUsers.filter((u: any) => !u.isActive).length;
 
-      // Izračunaj statistike po ulogama
+      // Izračunaj statistike po ulogama - pojednostavljen sistem
       const roleStats = allUsers.reduce((acc: any, user: any) => {
         if (user.role === 'admin' || user.role === 'ADMIN') acc.adminUsers++;
-        else if (user.role === 'obradjivaci predmeta') acc.obradjivaciUsers++;
-        else if (user.role === 'potpisnik') acc.potpisnikUsers++;
+        else acc.korisnikUsers++; // Svi ostali su korisnici
         return acc;
-      }, { adminUsers: 0, obradjivaciUsers: 0, potpisnikUsers: 0 });
+      }, { adminUsers: 0, korisnikUsers: 0 });
 
       setStats({
         totalUsers,
@@ -91,8 +88,7 @@ export default function AdminDashboard() {
         activeUsers: 0,
         pendingUsers: 0,
         adminUsers: 0,
-        obradjivaciUsers: 0,
-        potpisnikUsers: 0
+        korisnikUsers: 0
       });
       setPendingUsers([]);
     } finally {
@@ -143,7 +139,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <button
           onClick={() => router.push('/admin/korisnici')}
           className="bg-blue-500 hover:bg-blue-600 text-white p-6 rounded-lg shadow-md transition-colors"
@@ -151,15 +147,6 @@ export default function AdminDashboard() {
           <div className="text-2xl mb-2">👥</div>
           <h3 className="text-lg font-semibold">Upravljanje Korisnicima</h3>
           <p className="text-sm opacity-90">Pregled, odobravanje i upravljanje korisnicima</p>
-        </button>
-
-        <button
-          onClick={() => router.push('/admin/sistem')}
-          className="bg-green-500 hover:bg-green-600 text-white p-6 rounded-lg shadow-md transition-colors"
-        >
-          <div className="text-2xl mb-2">⚙️</div>
-          <h3 className="text-lg font-semibold">Sistem Ruta</h3>
-          <p className="text-sm opacity-90">Upravljanje pristupima i rutama korisnika</p>
         </button>
 
         <button
@@ -225,12 +212,8 @@ export default function AdminDashboard() {
               <span className="font-semibold">{stats.adminUsers}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-600">📝 Obrađivači Predmeta</span>
-              <span className="font-semibold">{stats.obradjivaciUsers}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">✍️ Potpisnici</span>
-              <span className="font-semibold">{stats.potpisnikUsers}</span>
+              <span className="text-gray-600">👤 Korisnici</span>
+              <span className="font-semibold">{stats.korisnikUsers}</span>
             </div>
           </div>
         </div>
@@ -281,23 +264,15 @@ export default function AdminDashboard() {
       {/* Instructions */}
       <div className="bg-blue-50 p-6 rounded-lg">
         <h3 className="text-lg font-semibold text-blue-900 mb-4">📋 Uputstva za Admin</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <div>
             <h4 className="font-semibold text-blue-800 mb-2">👥 Upravljanje Korisnicima</h4>
             <ul className="text-sm text-blue-700 space-y-1">
               <li>• Pregledaj sve korisnike u sistemu</li>
               <li>• Odobri ili odbij nove registracije</li>
-              <li>• Promeni uloge korisnika</li>
+              <li>• Promeni uloge korisnika (admin/korisnik)</li>
               <li>• Aktiviraj/deaktiviraj naloge</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-semibold text-blue-800 mb-2">⚙️ Sistem Ruta</h4>
-            <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Upravljaj pristupima korisnika</li>
-              <li>• Dodaj/ukloni rute za korisnike</li>
-              <li>• Kontroliši šta korisnici mogu da vide</li>
-              <li>• Podesi dozvole za EUK sekcije</li>
+              <li>• Svi korisnici imaju pristup EUK funkcionalnostima</li>
             </ul>
           </div>
         </div>

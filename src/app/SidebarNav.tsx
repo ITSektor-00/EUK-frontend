@@ -81,6 +81,17 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
       return;
     }
     
+    // Za obične korisnike, koristi samo fallback rute - ne pozivaj admin API-jeve
+    if (user.role?.toUpperCase() !== 'ADMIN') {
+      setLoading(true);
+      const fallbackRoutes = getFallbackRoutesForRole(user.role);
+      setUserRoutes(fallbackRoutes);
+      setRoutes([]);
+      setLoading(false);
+      return;
+    }
+    
+    // Samo admin poziva admin API-jeve
     try {
       setLoading(true);
       const [userRoutesData, routesData] = await Promise.all([
@@ -90,7 +101,6 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
       setUserRoutes(Array.isArray(userRoutesData) ? userRoutesData : []);
       setRoutes(Array.isArray(routesData) ? routesData : []);
     } catch (error) {
-      console.error('Error loading user routes:', error);
       // Fallback na role-based rute ako API ne radi
       const fallbackRoutes = getFallbackRoutesForRole(user.role);
       setUserRoutes(fallbackRoutes);
@@ -136,15 +146,14 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
     };
   }, [loadAssignedRoutes]);
 
-  // Role-based route mapping
+  // Role-based route mapping - pojednostavljen sistem
   const getRoleBasedRoutes = (role: string): string[] => {
     const roleRoutes: { [key: string]: string[] } = {
       'ADMIN': [], // ADMIN ne koristi EUK sekciju - samo admin panel
-      'OBRADJIVAC': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje'],
-      'POTPISNIK': ['euk/stampanje']
+      'KORISNIK': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje'] // Svi korisnici imaju pristup EUK funkcionalnostima
     };
 
-    return roleRoutes[role] || [];
+    return roleRoutes[role] || ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje']; // Default za sve ostale
   };
 
   const getFallbackRoutesForRole = (role: string): UserRoute[] => {
@@ -174,14 +183,13 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
     }));
   };
 
-  // Admin sidebar - samo admin/korisnici i admin/sistem
+  // Admin sidebar - samo admin/korisnici
   const getAdminSections = () => {
     return [
       {
         title: 'АДМИН ПАНЕЛ',
         links: [
           { href: '/admin/korisnici', label: 'КОРИСНИЦИ', icon: <DynamicIcon iconName="ugrozena-lica" alt="КОРИСНИЦИ" /> },
-          { href: '/admin/sistem', label: 'СИСТЕМ', icon: <DynamicIcon iconName="komandnaTabla" alt="СИСТЕМ" /> },
         ] as NavLink[],
       }
     ];
@@ -197,43 +205,23 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
       'euk/ugrozena-lica': { label: 'УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
       'euk/stampanje': { label: 'ШТАМПАЊЕ', icon: 'stampanje' },
       'reports': { label: 'ИЗВЕШТАЈИ', icon: 'komandnaTabla' },
-      'analytics': { label: 'АНАЛИТИКА', icon: 'komandnaTabla' },
-      'settings': { label: 'ПОДЕШАВАЊА', icon: 'komandnaTabla' },
-      'profile': { label: 'ПРОФИЛ', icon: 'komandnaTabla' }
+      'analytics': { label: 'АНАЛИТИКА', icon: 'komandnaTabla' }
     };
 
-    // Role-based route access
-    const userRole = user?.role || 'POTPISNIK';
+    // Role-based route access - pojednostavljen sistem
+    const userRole = user?.role?.toUpperCase() || 'KORISNIK';
     let allowedRoutes: string[] = [];
 
     if (userRole === 'ADMIN') {
       // ADMIN ne vidi EUK sekciju - samo admin panel
       allowedRoutes = [];
     } else {
-      // Koristi dodeljene rute iz localStorage
-      const userAssignedRoutes = assignedRoutes.map(ur => ur.route);
-      allowedRoutes = userAssignedRoutes;
-      
-      // Dodaj profile i settings za sve uloge
-      allowedRoutes.push('profile', 'settings');
-      
-      // Ako nema dodeljenih ruta, koristi fallback na osnovu uloge
-      if (userAssignedRoutes.length === 0) {
-        allowedRoutes = getRoleBasedRoutes(userRole);
-        allowedRoutes.push('profile', 'settings');
-      }
+      // Svi ostali korisnici (KORISNIK) imaju pristup svim EUK funkcionalnostima
+      allowedRoutes = getRoleBasedRoutes(userRole);
     }
 
     const eukLinks = allowedRoutes
       .filter(route => route.startsWith('euk/'))
-      .map(route => ({
-        href: `/${route}`,
-        label: routeMap[route]?.label || route,
-        icon: <DynamicIcon iconName={routeMap[route]?.icon || 'komandnaTabla'} alt={route} />
-      }));
-
-    const otherLinks = allowedRoutes
-      .filter(route => !route.startsWith('euk/'))
       .map(route => ({
         href: `/${route}`,
         label: routeMap[route]?.label || route,
@@ -246,13 +234,6 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
       sections.push({
         title: 'ЕУК СИСТЕМ',
         links: eukLinks
-      });
-    }
-
-    if (otherLinks.length > 0) {
-      sections.push({
-        title: 'КОРИСНИЧКИ ПРОФИЛ',
-        links: otherLinks
       });
     }
 

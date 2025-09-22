@@ -93,19 +93,19 @@ export const usePermissions = (userId?: number) => {
           routes: {
             admin: userRole === 'admin',
             users: userRole === 'admin',
-            euk: ['admin', 'obradjivaci predmeta', 'potpisnik'].includes(userRole || ''),
+            euk: ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici imaju pristup EUK
             reports: userRole === 'admin',
             settings: userRole === 'admin',
             analytics: userRole === 'admin'
           },
           euk: {
-            kategorije: ['admin', 'obradjivaci predmeta'].includes(userRole || ''),
-            predmeti: ['admin', 'obradjivaci predmeta'].includes(userRole || ''),
-            'ugrozena-lica': ['admin', 'obradjivaci predmeta'].includes(userRole || ''),
-            create: ['admin', 'obradjivaci predmeta'].includes(userRole || ''),
-            read: ['admin', 'obradjivaci predmeta', 'potpisnik'].includes(userRole || ''),
-            update: ['admin', 'obradjivaci predmeta'].includes(userRole || ''),
-            delete: userRole === 'admin'
+            kategorije: ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici imaju pristup
+            predmeti: ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici imaju pristup
+            'ugrozena-lica': ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici imaju pristup
+            create: ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici mogu da kreiraju
+            read: ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici mogu da čitaju
+            update: ['admin', 'korisnik'].includes(userRole || ''), // Svi korisnici mogu da ažuriraju
+            delete: userRole === 'admin' // Samo admin može da briše
           },
           canDelete: userRole === 'admin',
           canManageUsers: userRole === 'admin',

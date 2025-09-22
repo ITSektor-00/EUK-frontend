@@ -3,21 +3,14 @@ import React, { useState } from 'react';
 import { NIVOI_PRISTUPA } from './RouteGuard';
 import { apiService } from '@/services/api';
 
-// Definicija uloga u sistemu
+// Definicija uloga u sistemu - pojednostavljen sistem
 const SYSTEM_ROLES = {
-  POTPISNIK: {
-    name: 'POTPISNIK',
-    displayName: 'Потписник',
-    description: 'Потписује документе',
-    icon: '✍️',
-    level: 2
-  },
-  OBRADJIVAC: {
-    name: 'OBRADJIVAC',
-    displayName: 'Обрађивач предмета',
-    description: 'Обрађује предмете у EUK систему',
-    icon: '📋',
-    level: 3
+  KORISNIK: {
+    name: 'KORISNIK',
+    displayName: 'Корисник',
+    description: 'Приступ EUK функционалностима',
+    icon: '👤',
+    level: 1
   },
   ADMIN: {
     name: 'ADMIN',
@@ -51,10 +44,7 @@ export const UserLevelManager: React.FC<UserLevelManagerProps> = ({
 
   const getLevelColor = (level: number) => {
     const colors = {
-      1: '#f44336', // Crvena
-      2: '#ff9800', // Narandžasta  
-      3: '#2196f3', // Plava
-      4: '#4caf50', // Zelena
+      1: '#2196f3', // Plava
       5: '#9c27b0'  // Ljubičasta
     };
     return (colors as any)[level] || '#e0e0e0';
@@ -62,8 +52,7 @@ export const UserLevelManager: React.FC<UserLevelManagerProps> = ({
 
   const getLevelIcon = (level: number) => {
     const icons = {
-      2: '✍️', // Potpisnik
-      3: '📋', // Obrađivač
+      1: '👤', // Korisnik
       5: '👑'  // Admin
     };
     return (icons as any)[level] || '⚪';
@@ -72,18 +61,15 @@ export const UserLevelManager: React.FC<UserLevelManagerProps> = ({
   const getAvailableLevels = () => {
     if (userRole === 'ADMIN') {
       return [5]; // Samo admin nivo
-    } else if (userRole === 'OBRADJIVAC') {
-      return [3]; // Samo obrađivač nivo
-    } else if (userRole === 'POTPISNIK') {
-      return [2]; // Samo potpisnik nivo
+    } else if (userRole === 'KORISNIK') {
+      return [1]; // Samo korisnik nivo
     }
-    return [2, 3, 5]; // Svi nivoi ako uloga nije definisana
+    return [1, 5]; // Svi nivoi ako uloga nije definisana
   };
 
   const getLevelDisplayName = (level: number) => {
     const names = {
-      2: '✍️ Потписник',
-      3: '📋 Обрађивач предмета',
+      1: '👤 Корисник',
       5: '👑 Администратор'
     };
     return (names as any)[level] || `Ниво ${level}`;
@@ -188,8 +174,7 @@ export const UserLevelManager: React.FC<UserLevelManagerProps> = ({
                       {getLevelDisplayName(level)}
                     </div>
                     <div className="text-sm text-gray-600">
-                      {level === 2 && 'Потписник - потписивање докумената'}
-                      {level === 3 && 'Обрађивач предмета - обрађивање предмета'}
+                      {level === 1 && 'Корисник - приступ EUK функционалностима'}
                       {level === 5 && 'Администратор - приступ свим функционалностима'}
                     </div>
                   </div>

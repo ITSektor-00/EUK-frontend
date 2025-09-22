@@ -135,15 +135,14 @@ class RouteService {
     return [];
   }
 
-  // Role-based route mapping
+  // Role-based route mapping - pojednostavljen sistem
   static getRoleBasedRoutes(role: string): string[] {
     const roleRoutes: { [key: string]: string[] } = {
       'ADMIN': [], // ADMIN ne koristi EUK sekciju - samo admin panel
-      'OBRADJIVAC': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje'],
-      'POTPISNIK': ['euk/stampanje']
+      'KORISNIK': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje'] // Svi korisnici imaju pristup EUK funkcionalnostima
     };
 
-    return roleRoutes[role] || [];
+    return roleRoutes[role] || ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje']; // Default za sve ostale
   }
 
   // Proveri da li korisnik ima pristup sekciji na osnovu role
@@ -184,7 +183,7 @@ class RouteService {
           naziv: 'Kategorije',
           opis: 'Upravljanje kategorijama u EUK sistemu',
           sekcija: 'EUK',
-          nivoMin: 2,
+          nivoMin: 1,
           nivoMax: 5,
           aktivna: true,
           datumKreiranja: new Date().toISOString()
@@ -195,7 +194,7 @@ class RouteService {
           naziv: 'Predmeti',
           opis: 'Upravljanje predmetima u EUK sistemu',
           sekcija: 'EUK',
-          nivoMin: 2,
+          nivoMin: 1,
           nivoMax: 5,
           aktivna: true,
           datumKreiranja: new Date().toISOString()
@@ -206,7 +205,7 @@ class RouteService {
           naziv: 'Ugrožena lica',
           opis: 'Upravljanje ugroženim licima u EUK sistemu',
           sekcija: 'EUK',
-          nivoMin: 2,
+          nivoMin: 1,
           nivoMax: 5,
           aktivna: true,
           datumKreiranja: new Date().toISOString()
@@ -217,7 +216,7 @@ class RouteService {
           naziv: 'Štampanje',
           opis: 'Štampanje dokumenata u EUK sistemu',
           sekcija: 'EUK',
-          nivoMin: 2,
+          nivoMin: 1,
           nivoMax: 5,
           aktivna: true,
           datumKreiranja: new Date().toISOString()
@@ -233,17 +232,6 @@ class RouteService {
           aktivna: true,
           datumKreiranja: new Date().toISOString()
         },
-        {
-          id: 6,
-          ruta: 'admin/sistem',
-          naziv: 'Admin Sistem',
-          opis: 'Administracija sistema',
-          sekcija: 'ADMIN',
-          nivoMin: 5,
-          nivoMax: 5,
-          aktivna: true,
-          datumKreiranja: new Date().toISOString()
-        }
       ];
     }
   }
@@ -288,9 +276,9 @@ class RouteService {
           lastName: 'Petrović',
           username: 'marko.petrovic',
           email: 'marko@euk.rs',
-          role: 'OBRADJIVAC',
+          role: 'KORISNIK',
           isActive: true,
-          nivoPristupa: 3,
+          nivoPristupa: 1,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
@@ -300,9 +288,9 @@ class RouteService {
           lastName: 'Nikolić',
           username: 'ana.nikolic',
           email: 'ana@euk.rs',
-          role: 'POTPISNIK',
+          role: 'KORISNIK',
           isActive: true,
-          nivoPristupa: 2,
+          nivoPristupa: 1,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
