@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
   try {
 
     // Forward to backend API with query parameters
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8080' 
+      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
     const queryParams = new URLSearchParams({
       page,
       size,
@@ -99,3 +101,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(fallbackResponse);
   }
 }
+

@@ -7,7 +7,11 @@ export async function POST(request: NextRequest) {
     console.log('Signin request body:', body);
     console.log('Sending to backend:', JSON.stringify(body));
     
-    const response = await fetch('http://localhost:8080/api/auth/signin', {
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8080' 
+      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+    
+    const response = await fetch(`${backendUrl}/api/auth/signin`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

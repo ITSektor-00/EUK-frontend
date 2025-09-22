@@ -8,7 +8,9 @@ export async function GET(
     const { userId, routeId } = await params;
     
     // Forward to backend API
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8080' 
+      : 'https://euk.onrender.com';
     
     const response = await fetch(`${backendUrl}/api/user-routes/${userId}/check/${routeId}`, {
       method: 'GET',

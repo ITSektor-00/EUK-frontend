@@ -8,7 +8,9 @@ export async function PUT(
     const { id } = await params;
     const userId = id;
     const { role } = await request.json();
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8080' 
+      : 'https://euk.onrender.com';
 
     const response = await fetch(`${backendUrl}/api/users/${userId}/role`, {
       method: 'PUT',

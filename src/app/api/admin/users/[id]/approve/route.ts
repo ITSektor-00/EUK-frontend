@@ -7,7 +7,9 @@ export async function PUT(
   try {
     const { id } = await params;
     const userId = id;
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8080' 
+      : 'https://euk.onrender.com';
 
     const response = await fetch(`${backendUrl}/api/users/${userId}/approve`, {
       method: 'PUT',

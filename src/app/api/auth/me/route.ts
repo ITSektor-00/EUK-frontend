@@ -11,7 +11,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = await fetch('http://localhost:8080/api/auth/me', {
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8080' 
+      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+    
+    const response = await fetch(`${backendUrl}/api/auth/me`, {
       method: 'GET',
       headers: {
         'Authorization': authHeader,

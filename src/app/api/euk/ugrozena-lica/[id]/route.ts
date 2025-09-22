@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SPRING_BASE_URL = process.env.SPRING_BASE_URL || 'http://localhost:8080';
+const SPRING_BASE_URL = process.env.NODE_ENV === 'development' 
+  ? 'http://localhost:8080' 
+  : 'https://euk.onrender.com';
 
 export async function GET(
   request: NextRequest,

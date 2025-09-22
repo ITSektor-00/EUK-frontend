@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SPRING_BASE_URL = process.env.SPRING_BASE_URL || 'http://localhost:8080';
+const SPRING_BASE_URL = process.env.NODE_ENV === 'development' 
+  ? 'http://localhost:8080' 
+  : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
 
 // Rate limiting mapa - čuva broj zahteva po IP adresi
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -143,3 +145,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
