@@ -116,6 +116,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (storedToken !== token) {
         setToken(storedToken);
+        // Sinhronizuj sa cookies - uvek ažuriraj cookies sa najnovijim token-om
+        if (storedToken && typeof document !== 'undefined') {
+          const isSecure = window.location.protocol === 'https:';
+          document.cookie = `token=${storedToken}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
+        }
       }
     };
 
@@ -253,8 +258,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
-        // Obriši token iz cookies
-        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // Obriši token iz cookies - koristi iste parametre kao pri postavljanju
+        const isSecure = window.location.protocol === 'https:';
+        document.cookie = `token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; ${isSecure ? 'secure;' : ''} samesite=strict`;
         // Obriši user cache
         const keys = Object.keys(localStorage);
         keys.forEach(key => {
@@ -270,8 +276,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setToken(newToken);
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', newToken);
-      // Ažuriraj token u cookies
-      document.cookie = `token=${newToken}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
+      // Ažuriraj token u cookies - koristi iste parametre kao pri postavljanju
+      const isSecure = window.location.protocol === 'https:';
+      document.cookie = `token=${newToken}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
     }
   };
 
