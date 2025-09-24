@@ -154,6 +154,8 @@ export async function middleware(request: NextRequest) {
   console.log('Middleware called for:', request.nextUrl.pathname);
   console.log('Request URL:', request.url);
   console.log('Request method:', request.method);
+  console.log('User-Agent:', request.headers.get('user-agent'));
+  console.log('Referer:', request.headers.get('referer'));
   
   // Dodaj CORS headere za sve zahteve
   const response = NextResponse.next()
@@ -240,10 +242,5 @@ export const config = {
      * - favicon.ico (favicon file)
      */
     '/((?!_next/static|_next/image|favicon.ico).*)',
-    // Eksplicitno dodaj glavne rute
-    '/',
-    '/login',
-    '/dashboard',
-    '/admin',
   ],
 }
