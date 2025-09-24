@@ -90,6 +90,13 @@ async function handleRoleBasedRouting(request: NextRequest): Promise<NextRespons
   const token = request.cookies.get('token')?.value || 
                 request.headers.get('authorization')?.replace('Bearer ', '');
   
+  console.log('Middleware - handleRoleBasedRouting:', {
+    pathname: request.nextUrl.pathname,
+    hasToken: !!token,
+    tokenLength: token?.length || 0,
+    cookies: request.cookies.getAll().map(c => c.name)
+  });
+  
   if (!token) {
     return null; // Nema token-a, ne preusmeravaj
   }
@@ -104,9 +111,12 @@ async function handleRoleBasedRouting(request: NextRequest): Promise<NextRespons
     
     // Ako je korisnik na home page-u, preusmeri na odgovarajući dashboard
     if (pathname === '/') {
+      console.log('Middleware - redirecting from home page:', { userRole, pathname });
       if (userRole === 'ADMIN') {
+        console.log('Middleware - redirecting admin to /admin');
         return NextResponse.redirect(new URL('/admin', request.url));
       } else if (userRole === 'KORISNIK' || userRole === 'USER') {
+        console.log('Middleware - redirecting user to /dashboard');
         return NextResponse.redirect(new URL('/dashboard', request.url));
       }
     }

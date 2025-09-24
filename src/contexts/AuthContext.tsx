@@ -173,16 +173,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       setLoading(false); // VAŽNO: Postavi loading na false nakon uspešnog login-a
       
-      // Direktno preusmeravanje na osnovu role
-      setTimeout(() => {
-        if (typeof window !== 'undefined') {
-          if (response.role === 'admin' || response.role === 'ADMIN') {
-            window.location.href = '/admin';
-          } else {
-            window.location.href = '/dashboard';
-          }
-        }
-      }, 100);
+      // Ne preusmeravaj ovde - neka middleware hendluje redirekciju
+      // Middleware će preusmeriti korisnika na osnovu role kada pristupi home page-u
     } catch (error) {
       console.error('Login error:', error);
       setLoading(false); // Postavi loading na false i u slučaju greške
