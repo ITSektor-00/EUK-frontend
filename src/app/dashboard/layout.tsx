@@ -18,6 +18,11 @@ export default function DashboardLayout({
   const { user, logout, isAdmin, loading } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  
+  console.log('=== DASHBOARD LAYOUT DEBUG ===');
+  console.log('User:', user);
+  console.log('IsAdmin:', isAdmin);
+  console.log('Loading:', loading);
 
   // Middleware sada radi rutiranje na osnovu role
   // useEffect(() => {

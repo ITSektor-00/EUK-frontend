@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiService } from '../services/api';
 
 interface User {
@@ -42,6 +43,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   const loadUser = useCallback(async () => {
     try {
@@ -170,11 +172,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', response.token);
-        // Dodaj token u cookies da middleware može da ga čita
-        // Dodaj token u cookies da middleware može da ga čita
-        const isSecure = window.location.protocol === 'https:';
-        document.cookie = `token=${response.token}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
+        // ChatGPT rešenje - postavi token u cookies
+        document.cookie = `token=${response.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
       }
+      
+      // Client-side redirekcija na osnovu role
+      console.log('=== CLIENT-SIDE REDIRECT ===');
+      console.log('User role:', response.role);
+      setTimeout(() => {
+        if (response.role === 'admin' || response.role === 'ADMIN') {
+          console.log('Redirecting admin to /admin');
+          router.push('/admin');
+        } else if (response.role === 'korisnik' || response.role === 'USER' || response.role === 'KORISNIK') {
+          console.log('Redirecting user to /dashboard');
+          router.push('/dashboard');
+        }
+      }, 100);
       setLoading(false); // VAŽNO: Postavi loading na false nakon uspešnog login-a
       
       // Ne preusmeravaj ovde - neka middleware hendluje redirekciju
