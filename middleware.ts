@@ -104,7 +104,14 @@ async function handleRoleBasedRouting(request: NextRequest): Promise<NextRespons
   try {
     // Dekodiraj JWT token
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key');
+    console.log('Middleware - JWT verification:', {
+      hasJwtSecret: !!process.env.JWT_SECRET,
+      secretLength: secret.length,
+      tokenLength: token.length
+    });
+    
     const { payload } = await jwtVerify(token, secret);
+    console.log('Middleware - JWT payload:', { role: payload.role, sub: payload.sub });
     
     const userRole = (payload.role as string)?.toUpperCase();
     const pathname = request.nextUrl.pathname;
@@ -134,6 +141,10 @@ async function handleRoleBasedRouting(request: NextRequest): Promise<NextRespons
     return null; // Nema potrebe za preusmeravanje
   } catch (error) {
     console.error('Error in role-based routing:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return null;
   }
 }
