@@ -71,7 +71,7 @@ export default function PredmetDetaljiPage() {
     if (!token) return;
     
     try {
-      const data = await apiService.getKategorije(token);
+      const data = await apiService.getKategorije('', token);
       setKategorije(data);
     } catch (err) {
       console.error('Greška pri učitavanju kategorija:', err);

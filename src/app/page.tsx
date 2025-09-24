@@ -6,24 +6,31 @@ import { AuthLayout } from '@/components/AuthLayout';
 import Branding from '@/components/Branding';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAuth } from '@/contexts/AuthContext';
+import AdminQuickAccess from '@/components/AdminQuickAccess';
 
 export default function HomePage() {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+  const { isAuthenticated, isAdmin, loading, user } = useAuth();
 
-  useEffect(() => {
-    // Ako je korisnik već prijavljen, preusmeri na odgovarajući dashboard
-    if (!loading && isAuthenticated) {
-      if (isAdmin) {
-        router.push('/admin');
-      } else {
-        router.push('/dashboard');
-      }
-    }
-  }, [isAuthenticated, isAdmin, loading, router]);
 
-  // Ako se još uvek uvek učitava ili je korisnik prijavljen, prikaži loading
+  // Middleware sada radi rutiranje na osnovu role
+  // useEffect(() => {
+  //   if (!loading && isAuthenticated) {
+  //     if (isAdmin) {
+  //       router.push('/admin');
+  //     } else {
+  //       router.push('/dashboard');
+  //     }
+  //   }
+  // }, [isAuthenticated, isAdmin, loading, router]);
+
+  // Ako je admin, koristi optimizovanu komponentu
+  if (loading && isAdmin) {
+    return <AdminQuickAccess />;
+  }
+
+  // Ako se još uvek učitava ili je korisnik prijavljen, prikaži loading
   if (loading || isAuthenticated) {
     return (
       <AuthLayout>

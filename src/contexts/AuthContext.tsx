@@ -49,9 +49,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(false);
         return;
       }
+
+      // Proveri cache prvo
+      const cacheKey = `user_${token.substring(0, 20)}`;
+      const cachedUser = localStorage.getItem(cacheKey);
+      if (cachedUser) {
+        try {
+          const parsedUser = JSON.parse(cachedUser);
+          // Proveri da li je cache stariji od 5 minuta
+          if (Date.now() - parsedUser.timestamp < 300000) {
+            setUser(parsedUser.data);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          // Ako cache nije validan, obriši ga
+          localStorage.removeItem(cacheKey);
+        }
+      }
       
       const userData = await apiService.getCurrentUser(token);
       setUser(userData);
+      
+      // Sačuvaj u cache
+      localStorage.setItem(cacheKey, JSON.stringify({
+        data: userData,
+        timestamp: Date.now()
+      }));
     } catch (error) {
       console.error('Error loading user:', error);
       
@@ -69,10 +93,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [token]);
 
-  // Proveri localStorage tek nakon mount-a i pratiti promene
+  // Proveri localStorage i cookies tek nakon mount-a i pratiti promene
   useEffect(() => {
     const checkToken = () => {
+      // Prvo proveri localStorage
       const storedToken = localStorage.getItem('token');
+      
+      // Ako nema token-a u localStorage, proveri cookies
+      if (!storedToken && typeof document !== 'undefined') {
+        const cookies = document.cookie.split(';');
+        const tokenCookie = cookies.find(cookie => cookie.trim().startsWith('token='));
+        if (tokenCookie) {
+          const cookieToken = tokenCookie.split('=')[1];
+          if (cookieToken && cookieToken !== token) {
+            setToken(cookieToken);
+            // Sinhronizuj sa localStorage
+            localStorage.setItem('token', cookieToken);
+            return;
+          }
+        }
+      }
+      
       if (storedToken !== token) {
         setToken(storedToken);
       }
@@ -95,7 +136,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       setLoading(false);
     }
-  }, [token, loadUser]);
+  }, [token]); // Uklonjen loadUser iz dependency array-a
 
   const login = async (credentials: { usernameOrEmail: string; password: string }) => {
     try {
@@ -125,9 +166,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', response.token);
+        // Dodaj token u cookies da middleware može da ga čita
+        // Dodaj token u cookies da middleware može da ga čita
+        const isSecure = window.location.protocol === 'https:';
+        document.cookie = `token=${response.token}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
       }
+      setLoading(false); // VAŽNO: Postavi loading na false nakon uspešnog login-a
+      
+      // Direktno preusmeravanje na osnovu role
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          if (response.role === 'admin' || response.role === 'ADMIN') {
+            window.location.href = '/admin';
+          } else {
+            window.location.href = '/dashboard';
+          }
+        }
+      }, 100);
     } catch (error) {
       console.error('Login error:', error);
+      setLoading(false); // Postavi loading na false i u slučaju greške
       throw error;
     }
   };
@@ -161,18 +219,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', response.token);
+        // Dodaj token u cookies da middleware može da ga čita
+        const isSecure = window.location.protocol === 'https:';
+        document.cookie = `token=${response.token}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
       }
+      
+      // Direktno preusmeravanje nakon registracije
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          if (response.role === 'admin' || response.role === 'ADMIN') {
+            window.location.href = '/admin';
+          } else {
+            window.location.href = '/dashboard';
+          }
+        }
+      }, 100);
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
     }
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
+  const logout = async () => {
+    try {
+      // Pozovi backend API za odjavu
+      if (token) {
+        await fetch('/api/odjava', { 
+          method: 'POST', 
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error during logout API call:', error);
+      // Nastavi sa odjavom čak i ako API poziv ne uspe
+    } finally {
+      // Uvek obriši lokalne podatke
+      setToken(null);
+      setUser(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        // Obriši token iz cookies
+        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // Obriši user cache
+        const keys = Object.keys(localStorage);
+        keys.forEach(key => {
+          if (key.startsWith('user_')) {
+            localStorage.removeItem(key);
+          }
+        });
+      }
     }
   };
 
@@ -180,6 +278,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setToken(newToken);
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', newToken);
+      // Ažuriraj token u cookies
+      document.cookie = `token=${newToken}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=strict`;
     }
   };
 

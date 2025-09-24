@@ -28,7 +28,7 @@ export default function KorisniciPage() {
   const { token } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('pending');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   const [error, setError] = useState<string | null>(null);
   
   // Pagination state
@@ -67,25 +67,11 @@ export default function KorisniciPage() {
         ...(debouncedSearchTerm && { search: debouncedSearchTerm })
       };
 
-      console.log('Loading users with filters:', currentFilters);
-      console.log('Original page (1-based):', page);
-      console.log('Converted page (0-based):', page - 1);
-      console.log('Size:', pagination.size);
-      console.log('Full API call parameters:', { page, size: pagination.size, filters: currentFilters });
-      const response = await apiService.getUsersWithPagination(token, page, 10000, currentFilters, false, 0); // Uzmi sve korisnike, bez cache-a
-      console.log('API response:', response);
-      console.log('Response type:', typeof response);
-      console.log('Response keys:', Object.keys(response || {}));
-      console.log('Response.users exists:', !!response.users);
-      console.log('Response.users value:', response.users);
-      console.log('Response.totalElements:', response.totalElements);
-      console.log('Response.totalPages:', response.totalPages);
-      console.log('Response.size:', response.size);
-      console.log('Response.number:', response.number);
+      // Pojednostavljen API poziv
+      const response = await apiService.getUsersWithPagination(token, page, pagination.size, currentFilters, false, 0);
       
+      // Pojednostavljena logika za rukovanje odgovorom
       if (response && response.users && Array.isArray(response.users)) {
-        console.log('Setting users from main API (users property):', response.users);
-        console.log('Users count from users property:', response.users.length);
         setUsers(response.users);
         setPagination(prev => ({
           ...prev,
@@ -94,19 +80,14 @@ export default function KorisniciPage() {
           totalPages: response.totalPages || Math.ceil((response.total || response.users.length) / pagination.size)
         }));
       } else if (response && response.content && Array.isArray(response.content)) {
-        // Spring Boot Pageable response structure
-        console.log('Setting users from main API (content property):', response.content);
-        console.log('Users count from content property:', response.content.length);
         setUsers(response.content);
         setPagination(prev => ({
           ...prev,
-          page: (response.number || 0) + 1, // Convert from 0-based to 1-based for UI
+          page: (response.number || 0) + 1,
           total: response.totalElements || response.content.length,
           totalPages: response.totalPages || Math.ceil((response.totalElements || response.content.length) / pagination.size)
         }));
       } else if (response && Array.isArray(response)) {
-        // Response is directly an array
-        console.log('Response is direct array:', response);
         setUsers(response);
         setPagination(prev => ({
           ...prev,
@@ -115,52 +96,12 @@ export default function KorisniciPage() {
           totalPages: 1
         }));
       } else {
-        // Fallback to old API if new one doesn't work
-        console.log('Using fallback API...');
-        console.log('Trying getAllUsers without pagination...');
-        const fallbackResponse = await apiService.getAllUsers(token, true, 30000); // 30s cache
-        console.log('Fallback response:', fallbackResponse);
-        console.log('Fallback response type:', typeof fallbackResponse);
-        console.log('Fallback response keys:', Object.keys(fallbackResponse || {}));
-        
-        if (fallbackResponse && fallbackResponse.users && Array.isArray(fallbackResponse.users)) {
-          console.log('Setting users from fallback API (users property):', fallbackResponse.users);
-          setUsers(fallbackResponse.users);
-        } else if (fallbackResponse && fallbackResponse.content && Array.isArray(fallbackResponse.content)) {
-          console.log('Setting users from fallback API (content property):', fallbackResponse.content);
-          setUsers(fallbackResponse.content);
-        } else if (fallbackResponse && Array.isArray(fallbackResponse)) {
-          console.log('Fallback response is direct array:', fallbackResponse);
-          setUsers(fallbackResponse);
-        } else {
-          console.log('No valid data found, setting empty array');
-          console.log('Trying to load page 0 (Spring Boot uses 0-based indexing)...');
-          try {
-            const pageZeroFilters = { ...currentFilters, page: 0 };
-            const pageZeroResponse = await apiService.getUsersWithPagination(token, 1, pagination.size, pageZeroFilters, true, 30000); // 30s cache
-            console.log('Page 0 response:', pageZeroResponse);
-            if (pageZeroResponse && pageZeroResponse.content && Array.isArray(pageZeroResponse.content)) {
-              console.log('Found data on page 0:', pageZeroResponse.content);
-              setUsers(pageZeroResponse.content);
-              setPagination(prev => ({
-                ...prev,
-                page: 1,
-                total: pageZeroResponse.totalElements || pageZeroResponse.content.length,
-                totalPages: pageZeroResponse.totalPages || 1
-              }));
-            } else {
-              setUsers([]);
-            }
-          } catch (pageZeroError) {
-            console.log('Page 0 also failed:', pageZeroError);
-            setUsers([]);
-          }
-        }
-        
+        // Ako nema podataka, postavi prazan niz
+        setUsers([]);
         setPagination(prev => ({
           ...prev,
           page: 1,
-          total: fallbackResponse?.users?.length || fallbackResponse?.length || 0,
+          total: 0,
           totalPages: 1
         }));
       }
@@ -198,30 +139,13 @@ export default function KorisniciPage() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Debounced loadUsers function
-  const debouncedLoadUsers = useCallback((page: number = 1, resetFilters: boolean = false) => {
-    if (loadUsersTimeoutRef.current) {
-      clearTimeout(loadUsersTimeoutRef.current);
-    }
-    
-    loadUsersTimeoutRef.current = setTimeout(() => {
-      loadUsers(page, resetFilters);
-    }, 2000); // 2000ms debounce to reduce API calls
-  }, []);
-
   // Load users when filters change (using debounced search term)
   useEffect(() => {
     if (token) {
-      debouncedLoadUsers(1, false);
+      // Direktno pozovi loadUsers bez debounce-a da izbegnemo probleme
+      loadUsers(1, false);
     }
-    
-    // Cleanup timeout on unmount
-    return () => {
-      if (loadUsersTimeoutRef.current) {
-        clearTimeout(loadUsersTimeoutRef.current);
-      }
-    };
-  }, [debouncedSearchTerm, roleFilter, token, debouncedLoadUsers]);
+  }, [debouncedSearchTerm, roleFilter, token]);
 
   const handleApprove = async (userId: number) => {
     try {
@@ -332,18 +256,17 @@ export default function KorisniciPage() {
   const filteredUsers = users.filter(user => {
     switch (filter) {
       case 'pending':
-        return !user.isActive; // Korisnici koji nisu aktivni (na čekanju)
+        return !user.isActive && !user.isApproved; // Korisnici koji nisu aktivni i nisu odobreni (na čekanju)
       case 'approved':
-        return user.isActive; // Aktivni korisnici (odobreni)
+        return user.isActive && user.isApproved; // Aktivni i odobreni korisnici
+      case 'rejected':
+        return !user.isActive && !user.isApproved; // Korisnici koji su odbijeni (neaktivni i neodobreni)
       default:
         return true; // Svi korisnici
     }
   });
 
-  // Debug logging
-  console.log('Users state:', users);
-  console.log('Filtered users:', filteredUsers);
-  console.log('Current filter:', filter);
+  // Debug logging - uklonjen da smanjimo opterećenje
 
 
   const getRoleBadge = (role: string) => {
@@ -471,13 +394,19 @@ export default function KorisniciPage() {
           onClick={() => setFilter('pending')}
           className={`px-4 py-2 rounded-lg ${filter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
         >
-          НА ЧЕКАЊУ ({users.filter(u => !u.isActive).length})
+          НА ЧЕКАЊУ ({users.filter(u => !u.isActive && !u.isApproved).length})
         </button>
         <button
           onClick={() => setFilter('approved')}
           className={`px-4 py-2 rounded-lg ${filter === 'approved' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
         >
-          ОДОБРЕНИ ({users.filter(u => u.isActive).length})
+          ОДОБРЕНИ ({users.filter(u => u.isActive && u.isApproved).length})
+        </button>
+        <button
+          onClick={() => setFilter('rejected')}
+          className={`px-4 py-2 rounded-lg ${filter === 'rejected' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+        >
+          ОДБИЈЕНИ ({users.filter(u => !u.isActive && !u.isApproved).length})
         </button>
         <button
           onClick={() => setFilter('all')}
@@ -542,7 +471,7 @@ export default function KorisniciPage() {
                   {new Date(user.createdAt).toLocaleDateString('sr-Latn-RS')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  {/* Neaktivni korisnici (na čekanju) - mogu da se odobre ili obrišu */}
+                  {/* Neaktivni korisnici (na čekanju) - mogu da se odobre ili odbiju */}
                   {!user.isActive && (
                     <>
                       <button
@@ -552,6 +481,12 @@ export default function KorisniciPage() {
                         ОДОБРИ
                       </button>
                       <button
+                        onClick={() => handleReject(user.id)}
+                        className="text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200 px-3 py-1 rounded-md transition-colors ml-2"
+                      >
+                        ОДБИЈ
+                      </button>
+                      <button
                         onClick={() => handleDeleteUser(user.id)}
                         className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition-colors ml-2"
                       >
@@ -559,14 +494,22 @@ export default function KorisniciPage() {
                       </button>
                     </>
                   )}
-                  {/* Aktivni korisnici (odobreni) - mogu da se obrišu */}
+                  {/* Aktivni korisnici (odobreni) - mogu da se odbiju ili obrišu */}
                   {user.isActive && (
-                    <button
-                      onClick={() => handleDeleteUser(user.id)}
-                      className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition-colors"
-                    >
-                      ОБРИШИ
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleReject(user.id)}
+                        className="text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200 px-3 py-1 rounded-md transition-colors"
+                      >
+                        ОДБИЈ
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user.id)}
+                        className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition-colors ml-2"
+                      >
+                        ОБРИШИ
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>

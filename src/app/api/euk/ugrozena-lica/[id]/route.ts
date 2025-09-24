@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica/${id}`, {
+    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica-t1/${id}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -40,7 +40,7 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
     
-    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica/${id}`, {
+    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica-t1/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica/${id}`, {
+    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica-t1/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

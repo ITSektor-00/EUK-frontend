@@ -150,10 +150,10 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
   const getRoleBasedRoutes = (role: string): string[] => {
     const roleRoutes: { [key: string]: string[] } = {
       'ADMIN': [], // ADMIN ne koristi EUK sekciju - samo admin panel
-      'KORISNIK': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje'] // Svi korisnici imaju pristup EUK funkcionalnostima
+      'KORISNIK': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/ugrozeno-lice-t2', 'euk/stampanje'] // Svi korisnici imaju pristup EUK funkcionalnostima
     };
 
-    return roleRoutes[role] || ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/stampanje']; // Default za sve ostale
+    return roleRoutes[role] || ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/ugrozeno-lice-t2', 'euk/stampanje']; // Default za sve ostale
   };
 
   const getFallbackRoutesForRole = (role: string): UserRoute[] => {
@@ -195,28 +195,29 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
     ];
   };
 
-  // Role-based user sidebar
+  // Role-based user sidebar - STRIKTNA KONTROLA
   const getUserSections = () => {
     if (loading) return [];
 
     const routeMap: { [key: string]: { label: string; icon: string } } = {
       'euk/kategorije': { label: 'КАТЕГОРИЈЕ', icon: 'kategorije' },
       'euk/predmeti': { label: 'ПРЕДМЕТИ', icon: 'predmeti' },
-      'euk/ugrozena-lica': { label: 'УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
+      'euk/ugrozena-lica': { label: 'ЕУК-Т1 УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
+      'euk/ugrozeno-lice-t2': { label: 'ЕУК-Т2 УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
       'euk/stampanje': { label: 'ШТАМПАЊЕ', icon: 'stampanje' },
       'reports': { label: 'ИЗВЕШТАЈИ', icon: 'komandnaTabla' },
       'analytics': { label: 'АНАЛИТИКА', icon: 'komandnaTabla' }
     };
 
-    // Role-based route access - pojednostavljen sistem
+    // STRIKTNA role-based route access
     const userRole = user?.role?.toUpperCase() || 'KORISNIK';
     let allowedRoutes: string[] = [];
 
+    // ADMIN NIKAKO ne sme da vidi EUK sekciju
     if (userRole === 'ADMIN') {
-      // ADMIN ne vidi EUK sekciju - samo admin panel
-      allowedRoutes = [];
+      allowedRoutes = []; // ADMIN ne vidi EUK sekciju
     } else {
-      // Svi ostali korisnici (KORISNIK) imaju pristup svim EUK funkcionalnostima
+      // Samo KORISNIK može da vidi EUK sekciju
       allowedRoutes = getRoleBasedRoutes(userRole);
     }
 
@@ -243,13 +244,20 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
   const getSections = () => {
     if (!user) return [];
 
-    // Role-based access control
+    // STRIKTNA role-based access control
     const userRole = user.role?.toUpperCase();
     
+    // ADMIN vidi samo admin sekciju
     if (userRole === 'ADMIN') {
       return getAdminSections();
-    } else {
+    } 
+    // KORISNIK vidi samo EUK sekciju
+    else if (userRole === 'KORISNIK' || userRole === 'USER') {
       return getUserSections();
+    }
+    // Default - ne prikazuj ništa ako nije prepoznata uloga
+    else {
+      return [];
     }
   };
 
@@ -312,7 +320,7 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
   )
 }
 
-// Pojednostavljena SidebarItem komponenta
+// Pojednostavljena SidebarItem komponenta sa sigurnosnom proverom
 function SidebarItem({ href, icon, label, active, sidebarOpen }: { 
   href: string, 
   icon?: React.ReactElement, 
@@ -320,6 +328,35 @@ function SidebarItem({ href, icon, label, active, sidebarOpen }: {
   active: boolean, 
   sidebarOpen: boolean
 }) {
+  const { user } = useAuth();
+  
+  // Sigurnosna provera - spreči pristup neodobrenim rutama
+  const isAllowedRoute = () => {
+    if (!user) return false;
+    
+    const userRole = user.role?.toUpperCase();
+    
+    // Admin rute - samo admin može da pristupi
+    if (href.startsWith('/admin')) {
+      return userRole === 'ADMIN';
+    }
+    
+    // EUK rute - samo korisnici mogu da pristupe
+    if (href.startsWith('/euk')) {
+      return userRole === 'KORISNIK' || userRole === 'USER';
+    }
+    
+    // Dashboard rute - svi mogu da pristupe
+    if (href === '/dashboard' || href === '/admin/dashboard') {
+      return true;
+    }
+    
+    return true; // Default - dozvoli pristup
+  };
+
+  if (!isAllowedRoute()) {
+    return null; // Ne prikazuj link ako nije dozvoljen
+  }
   if (!sidebarOpen) {
     return (
       <div className="relative flex items-center justify-center w-full group">

@@ -125,7 +125,7 @@ export default function PredmetiPage() {
 
   const fetchKategorije = async () => {
     try {
-      const data = await apiService.getKategorije(token!);
+      const data = await apiService.getKategorije('', token!);
       setKategorije(data);
     } catch (err) {
       console.error('Greška pri učitavanju kategorija:', err);

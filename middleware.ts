@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
 
 // Rate limiting mapa - čuva broj zahteva po IP adresi
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -45,7 +46,89 @@ function getClientIP(request: NextRequest): string {
   return '127.0.0.1';
 }
 
-export function middleware(request: NextRequest) {
+// Role-based access control
+async function checkRoleAccess(request: NextRequest): Promise<boolean> {
+  const token = request.cookies.get('token')?.value || 
+                request.headers.get('authorization')?.replace('Bearer ', '');
+  
+  if (!token) {
+    return false;
+  }
+
+  try {
+    // Dekodiraj JWT token
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key');
+    const { payload } = await jwtVerify(token, secret);
+    
+    const userRole = (payload.role as string)?.toUpperCase();
+    const pathname = request.nextUrl.pathname;
+    
+    // Admin rute - samo admin može da pristupi
+    if (pathname.startsWith('/admin')) {
+      return userRole === 'ADMIN';
+    }
+    
+    // EUK rute - samo korisnici mogu da pristupe
+    if (pathname.startsWith('/euk')) {
+      return userRole === 'KORISNIK' || userRole === 'USER';
+    }
+    
+    // Dashboard rute - svi mogu da pristupe
+    if (pathname === '/dashboard' || pathname === '/admin/dashboard') {
+      return true;
+    }
+    
+    return true; // Default - dozvoli pristup
+  } catch (error) {
+    console.error('Error verifying token:', error);
+    return false;
+  }
+}
+
+// Role-based routing - preusmerava korisnike na odgovarajuće rute
+async function handleRoleBasedRouting(request: NextRequest): Promise<NextResponse | null> {
+  const token = request.cookies.get('token')?.value || 
+                request.headers.get('authorization')?.replace('Bearer ', '');
+  
+  if (!token) {
+    return null; // Nema token-a, ne preusmeravaj
+  }
+
+  try {
+    // Dekodiraj JWT token
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key');
+    const { payload } = await jwtVerify(token, secret);
+    
+    const userRole = (payload.role as string)?.toUpperCase();
+    const pathname = request.nextUrl.pathname;
+    
+    // Ako je korisnik na home page-u, preusmeri na odgovarajući dashboard
+    if (pathname === '/') {
+      if (userRole === 'ADMIN') {
+        return NextResponse.redirect(new URL('/admin', request.url));
+      } else if (userRole === 'KORISNIK' || userRole === 'USER') {
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      }
+    }
+    
+    // Ako je admin na dashboard-u, preusmeri na admin panel
+    if (pathname === '/dashboard' && userRole === 'ADMIN') {
+      return NextResponse.redirect(new URL('/admin', request.url));
+    }
+    
+    // Ako je obični korisnik na admin panelu, preusmeri na dashboard
+    if (pathname.startsWith('/admin') && userRole !== 'ADMIN') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+    
+    return null; // Nema potrebe za preusmeravanje
+  } catch (error) {
+    console.error('Error in role-based routing:', error);
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   // Dodaj CORS headere za sve zahteve
   const response = NextResponse.next()
 
@@ -58,6 +141,25 @@ export function middleware(request: NextRequest) {
   // Handle preflight requests
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, { status: 200, headers: response.headers })
+  }
+
+  // Role-based routing - preusmerava korisnike na odgovarajuće rute
+  const routingResponse = await handleRoleBasedRouting(request);
+  if (routingResponse) {
+    return routingResponse;
+  }
+
+  // Role-based access control za zaštićene rute
+  const protectedRoutes = ['/admin', '/euk', '/dashboard'];
+  const isProtectedRoute = protectedRoutes.some(route => 
+    request.nextUrl.pathname.startsWith(route)
+  );
+  
+  if (isProtectedRoute) {
+    const hasAccess = await checkRoleAccess(request);
+    if (!hasAccess) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
   }
 
   // Proveri da li je API zahtev

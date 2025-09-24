@@ -1,10 +1,10 @@
 "use client";
 import React, { useState, useRef } from 'react';
-import { UgrozenoLice } from './types';
+import { UgrozenoLiceT1 } from './types';
 import { Button } from '@/components/ui/button';
 
 interface UgrozenaLicaTableProps {
-  ugrozenaLica: UgrozenoLice[];
+  ugrozenaLica: UgrozenoLiceT1[];
   visibleColumns: string[];
   columnOrder: string[];
   onOrderChange: (order: string[]) => void;
@@ -13,10 +13,10 @@ interface UgrozenaLicaTableProps {
   onSelectAll: (checked: boolean) => void;
   allSelected: boolean;
   loading: boolean;
-  onEdit: (ugrozenoLice: UgrozenoLice) => void;
+  onEdit: (ugrozenoLice: UgrozenoLiceT1) => void;
   onDelete: (id: number) => void;
   onSortByName: () => void;
-  onSortByDatumRodjenja: () => void;
+  onSortByDatumIzdavanjaRacuna: () => void;
   onSortByJmbg: () => void;
   columnsOpen: boolean;
   filterOpen: boolean;
@@ -24,14 +24,22 @@ interface UgrozenaLicaTableProps {
 
 const COLUMN_LABELS: Record<string, string> = {
   ugrozenoLiceId: 'ID',
+  redniBroj: 'Redni broj',
   ime: 'Ime',
   prezime: 'Prezime',
   jmbg: 'JMBG',
-  datumRodjenja: 'Datum rođenja',
-  drzavaRodjenja: 'Država rođenja',
-  mestoRodjenja: 'Mesto rođenja',
-  opstinaRodjenja: 'Opština rođenja',
-  predmetId: 'ID predmeta',
+  pttBroj: 'PTT broj',
+  gradOpstina: 'Grad/Opština',
+  mesto: 'Mesto',
+  ulicaIBroj: 'Ulica i broj',
+  brojClanovaDomacinstva: 'Broj članova domaćinstva',
+  osnovSticanjaStatusa: 'Osnov sticanja statusa',
+  edBrojBrojMernogUredjaja: 'ED broj/broj mernog uređaja',
+  potrosnjaKwh: 'Potrošnja (kWh)',
+  zagrevanaPovrsinaM2: 'Zagrevana površina (m²)',
+  iznosUmanjenjaSaPdv: 'Iznos umanjenja sa PDV',
+  brojRacuna: 'Broj računa',
+  datumIzdavanjaRacuna: 'Datum izdavanja računa',
 };
 
 export default function UgrozenaLicaTable({
@@ -45,7 +53,7 @@ export default function UgrozenaLicaTable({
   onEdit,
   onDelete,
   onSortByName,
-  onSortByDatumRodjenja,
+  onSortByDatumIzdavanjaRacuna,
   onSortByJmbg,
 }: UgrozenaLicaTableProps) {
   const [columnSizing, setColumnSizing] = useState<Record<string, number>>({});
@@ -126,13 +134,13 @@ export default function UgrozenaLicaTable({
                 style={{ width: columnSizing[col] || 160 }}
                 onClick={() => {
                   if (col === 'ime' || col === 'prezime') onSortByName();
-                  else if (col === 'datumRodjenja') onSortByDatumRodjenja();
+                  else if (col === 'datumIzdavanjaRacuna') onSortByDatumIzdavanjaRacuna();
                   else if (col === 'jmbg') onSortByJmbg();
                 }}
               >
                 <div className="flex items-center justify-between">
                   <span>{COLUMN_LABELS[col]}</span>
-                  {(col === 'ime' || col === 'prezime' || col === 'datumRodjenja' || col === 'jmbg') && (
+                  {(col === 'ime' || col === 'prezime' || col === 'datumIzdavanjaRacuna' || col === 'jmbg') && (
                     <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                     </svg>
@@ -171,8 +179,8 @@ export default function UgrozenaLicaTable({
                 <td className="px-6 py-4 whitespace-nowrap">
                   <input
                     type="checkbox"
-                    checked={selectedIds.includes(ugrozenoLice.ugrozenoLiceId)}
-                    onChange={(e) => onSelect(ugrozenoLice.ugrozenoLiceId, e.target.checked)}
+                    checked={ugrozenoLice.ugrozenoLiceId ? selectedIds.includes(ugrozenoLice.ugrozenoLiceId) : false}
+                    onChange={(e) => ugrozenoLice.ugrozenoLiceId && onSelect(ugrozenoLice.ugrozenoLiceId, e.target.checked)}
                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   />
                 </td>
@@ -182,9 +190,9 @@ export default function UgrozenaLicaTable({
                     className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
                     style={{ width: columnSizing[col] || 160 }}
                   >
-                    {col === 'datumRodjenja' 
-                      ? formatDate(ugrozenoLice[col])
-                      : col === 'ugrozenoLiceId' || col === 'predmetId'
+                    {col === 'datumIzdavanjaRacuna' 
+                      ? formatDate(ugrozenoLice[col] || '')
+                      : col === 'ugrozenoLiceId' || col === 'brojClanovaDomacinstva' || col === 'potrosnjaKwh' || col === 'zagrevanaPovrsinaM2' || col === 'iznosUmanjenjaSaPdv'
                       ? ugrozenoLice[col]
                       : ugrozenoLice[col] || '-'
                     }
@@ -203,7 +211,7 @@ export default function UgrozenaLicaTable({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onDelete(ugrozenoLice.ugrozenoLiceId)}
+                      onClick={() => ugrozenoLice.ugrozenoLiceId && onDelete(ugrozenoLice.ugrozenoLiceId)}
                       className="text-red-600 hover:text-red-900"
                     >
                       Obriši

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
-import { RouteGuard } from '../../components/PermissionGuard';
+import { EUKAccessGuard } from '../../components/RoleBasedGuards';
 import SidebarNav from '../SidebarNav';
 import Navbar from '../Navbar';
 import { ThemeProvider } from '../ThemeContext';
@@ -16,13 +16,14 @@ export default function EUKLayout({
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = '/login';
   };
 
   return (
     <ProtectedRoute>
-      <RouteGuard routeName="/euk" userId={user?.id}>
+      <EUKAccessGuard>
         <ThemeProvider>
           <div className="flex h-screen bg-gray-100">
               {/* Navbar - fiksiran na vrhu */}
@@ -53,7 +54,7 @@ export default function EUKLayout({
               </div>
             </div>
           </ThemeProvider>
-        </RouteGuard>
+        </EUKAccessGuard>
       </ProtectedRoute>
     );
   }

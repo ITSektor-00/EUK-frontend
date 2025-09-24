@@ -126,10 +126,17 @@ class ApiService {
 
   private async executeRequest(url: string, options: RequestInit, headers: Record<string, string>, endpoint: string, token?: string, retries: number = 1, useCache: boolean = false, cacheTTL: number = 30000): Promise<any> {
     try {
+      // Dodaj timeout od 30 sekundi da sprečimo beskonačno čekanje
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 sekundi timeout
+      
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         let errorData: Record<string, unknown> = {};
@@ -189,6 +196,12 @@ class ApiService {
       }
 
       let data;
+      
+      // Handle 204 No Content response (common for DELETE operations)
+      if (response.status === 204) {
+        return { success: true, message: 'Operation completed successfully' };
+      }
+      
       try {
         data = await response.json();
       } catch (jsonError) {
@@ -203,6 +216,10 @@ class ApiService {
       
       return data;
     } catch (error) {
+      // Handle timeout errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Zahtev je prekinut zbog prekoračenja vremena (30s). Server je možda preopterećen.');
+      }
       // Handle network connection errors specifically
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
         throw new Error('Backend server nije dostupan. Proverite da li je server pokrenut na portu 8080.');
@@ -215,27 +232,6 @@ class ApiService {
   }
 
   // EUK API endpoints
-  async getKategorije(token: string) {
-    return this.apiCall('/api/euk/kategorije', { method: 'GET' }, token);
-  }
-
-  async createKategorija(data: { naziv: string }, token: string) {
-    return this.apiCall('/api/euk/kategorije', { 
-      method: 'POST', 
-      body: JSON.stringify(data) 
-    }, token);
-  }
-
-  async updateKategorija(id: number, data: { naziv: string }, token: string) {
-    return this.apiCall(`/api/euk/kategorije/${id}`, { 
-      method: 'PUT', 
-      body: JSON.stringify(data) 
-    }, token);
-  }
-
-  async deleteKategorija(id: number, token: string) {
-    return this.apiCall(`/api/euk/kategorije/${id}`, { method: 'DELETE' }, token);
-  }
 
   async getPredmeti(params: string, token: string) {
     return this.apiCall(`/api/euk/predmeti?${params}`, { method: 'GET' }, token);
@@ -265,19 +261,30 @@ class ApiService {
   }
 
   async getUgrozenaLica(params: string, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica?${params}`, { method: 'GET' }, token);
+    return this.apiCall(`/api/euk/ugrozena-lica-t1?${params}`, { method: 'GET' }, token);
   }
 
   async createUgrozenoLice(data: Record<string, unknown>, token: string) {
-    const result = await this.apiCall('/api/euk/ugrozena-lica', { 
+    const result = await this.apiCall('/api/euk/ugrozena-lica-t1', { 
       method: 'POST', 
       body: JSON.stringify(data) 
     }, token);
     return result;
   }
 
+  async createUgrozenoLiceBatch(data: Record<string, unknown>[], token: string) {
+    const result = await this.apiCall('/api/euk/ugrozena-lica-t1/batch', { 
+      method: 'POST', 
+      body: JSON.stringify(data),
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }, token);
+    return result;
+  }
+
   async updateUgrozenoLice(id: number, data: Record<string, unknown>, token: string) {
-    const result = await this.apiCall(`/api/euk/ugrozena-lica/${id}`, { 
+    const result = await this.apiCall(`/api/euk/ugrozena-lica-t1/${id}`, { 
       method: 'PUT', 
       body: JSON.stringify(data) 
     }, token);
@@ -285,7 +292,174 @@ class ApiService {
   }
 
   async deleteUgrozenoLice(id: number, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica/${id}`, { method: 'DELETE' }, token);
+    return this.apiCall(`/api/euk/ugrozena-lica-t1/${id}`, { method: 'DELETE' }, token);
+  }
+
+  // Novi T1 endpoint-i za napredne pretrage
+  async searchUgrozenoLiceByJmbg(jmbg: string, token: string) {
+    return this.apiCall(`/api/euk/ugrozena-lica-t1/search/jmbg/${jmbg}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceByRedniBroj(redniBroj: string, token: string) {
+    return this.apiCall(`/api/euk/ugrozena-lica-t1/search/redni-broj/${redniBroj}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceByName(ime: string, prezime: string, token: string) {
+    return this.apiCall(`/api/euk/ugrozena-lica-t1/search/name?ime=${ime}&prezime=${prezime}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceByFilters(filters: Record<string, unknown>, token: string) {
+    return this.apiCall('/api/euk/ugrozena-lica-t1/search/filters', { 
+      method: 'POST', 
+      body: JSON.stringify(filters) 
+    }, token);
+  }
+
+  async getUgrozenaLicaStatistics(token: string) {
+    return this.apiCall('/api/euk/ugrozena-lica-t1/statistics', { method: 'GET' }, token);
+  }
+
+  async getUgrozenaLicaCount(token: string) {
+    return this.apiCall('/api/euk/ugrozena-lica-t1/count', { method: 'GET' }, token);
+  }
+
+  // ===== UGROZENO LICE T2 API ENDPOINTS =====
+
+  async getUgrozenaLicaT2(params: string, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2?${params}`, { method: 'GET' }, token);
+  }
+
+  async createUgrozenoLiceT2(data: Record<string, unknown>, token: string) {
+    const result = await this.apiCall('/api/ugrozeno-lice-t2', { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    }, token);
+    return result;
+  }
+
+  async createUgrozenoLiceT2Batch(data: Record<string, unknown>[], token: string) {
+    const result = await this.apiCall('/api/ugrozeno-lice-t2/bulk', { 
+      method: 'POST', 
+      body: JSON.stringify(data),
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }, token);
+    return result;
+  }
+
+  async updateUgrozenoLiceT2(id: number, data: Record<string, unknown>, token: string) {
+    const result = await this.apiCall(`/api/ugrozeno-lice-t2/${id}`, { 
+      method: 'PUT', 
+      body: JSON.stringify(data) 
+    }, token);
+    return result;
+  }
+
+  async deleteUgrozenoLiceT2(id: number, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2/${id}`, { method: 'DELETE' }, token);
+  }
+
+  // T2 napredne pretrage
+  async searchUgrozenoLiceT2ByJmbg(jmbg: string, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2/search?jmbg=${jmbg}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceT2ByRedniBroj(redniBroj: string, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2/search?redniBroj=${redniBroj}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceT2ByName(ime: string, prezime: string, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2/search/ime-prezime?ime=${ime}&prezime=${prezime}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceT2ByAdresa(gradOpstina: string, mesto: string, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2/search/adresa?gradOpstina=${gradOpstina}&mesto=${mesto}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceT2ByEnergetski(edBroj: string, token: string) {
+    return this.apiCall(`/api/ugrozeno-lice-t2/search/energetski?edBroj=${edBroj}`, { method: 'GET' }, token);
+  }
+
+  async searchUgrozenoLiceT2ByFilters(filters: Record<string, unknown>, token: string) {
+    return this.apiCall('/api/ugrozeno-lice-t2/search', { 
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }, token);
+  }
+
+  async searchUgrozenoLiceT2ByJmbgList(jmbgList: string[], token: string) {
+    return this.apiCall('/api/ugrozeno-lice-t2/search/jmbg-list', { 
+      method: 'POST', 
+      body: JSON.stringify(jmbgList) 
+    }, token);
+  }
+
+  async getUgrozenaLicaT2Statistics(token: string) {
+    return this.apiCall('/api/ugrozeno-lice-t2/statistics', { method: 'GET' }, token);
+  }
+
+  async getUgrozenaLicaT2Count(token: string) {
+    return this.apiCall('/api/ugrozeno-lice-t2/count', { method: 'GET' }, token);
+  }
+
+  // Kategorije endpoints
+  async getKategorije(params: string, token: string) {
+    return this.apiCall(`/api/euk/kategorije?${params}`, { method: 'GET' }, token);
+  }
+
+  async createKategorija(data: Record<string, unknown>, token: string) {
+    const result = await this.apiCall('/api/euk/kategorije', { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    }, token);
+    this.clearCache('kategorije');
+    return result;
+  }
+
+  async createKategorijaBatch(data: Record<string, unknown>[], token: string) {
+    const result = await this.apiCall('/api/euk/kategorije/batch', { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    }, token);
+    this.clearCache('kategorije');
+    return result;
+  }
+
+  async updateKategorija(id: number, data: Record<string, unknown>, token: string) {
+    const result = await this.apiCall(`/api/euk/kategorije/${id}`, { 
+      method: 'PUT', 
+      body: JSON.stringify(data) 
+    }, token);
+    this.clearCache('kategorije');
+    return result;
+  }
+
+  async deleteKategorija(id: number, token: string) {
+    const result = await this.apiCall(`/api/euk/kategorije/${id}`, { method: 'DELETE' }, token);
+    this.clearCache('kategorije');
+    return result;
+  }
+
+  async searchKategorijeByFilters(filters: Record<string, unknown>, token: string) {
+    return this.apiCall('/api/euk/kategorije/search', { 
+      method: 'POST', 
+      body: JSON.stringify(filters) 
+    }, token);
+  }
+
+  async getKategorijeStatistics(token: string) {
+    return this.apiCall('/api/euk/kategorije/statistics', { method: 'GET' }, token);
+  }
+
+  async getKategorijeCount(token: string) {
+    return this.apiCall('/api/euk/kategorije/count', { method: 'GET' }, token);
+  }
+
+  async getKategorijaBatchProgress(batchId: string, token: string) {
+    return this.apiCall(`/api/euk/kategorije/batch-progress/${batchId}`, { method: 'GET' }, token);
   }
 
   // Auth endpoints
@@ -473,6 +647,13 @@ class ApiService {
         throw new Error('Token je obavezan i ne može biti prazan');
       }
 
+      // Koristi cache ako je dostupan
+      const cacheKey = this.getCacheKey('/api/auth/me', { token: token.substring(0, 10) });
+      const cached = this.getFromCache(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
       const response = await fetch(`${this.baseURL}/api/auth/me`, {
         method: 'GET',
         headers: {
@@ -496,6 +677,9 @@ class ApiService {
       if (!userData || typeof userData !== 'object') {
         throw new Error('Neispravan odgovor od servera');
       }
+
+      // Sačuvaj u cache na 2 minuta
+      this.setCache(cacheKey, userData, 120000);
 
       return userData;
     } catch (error) {
@@ -577,13 +761,13 @@ class ApiService {
   }
 
   async approveUser(userId: number, token: string) {
-    const result = await this.apiCall(`/api/admin/users/${userId}/approve`, { method: 'PUT' }, token, 3, false, 0); // 3 retries, no cache
+    const result = await this.apiCall(`/api/admin/users/${userId}/approve`, { method: 'POST' }, token, 3, false, 0); // 3 retries, no cache
     this.clearCache('users'); // Clear user-related cache after approval
     return result;
   }
 
   async rejectUser(userId: number, token: string) {
-    const result = await this.apiCall(`/api/admin/users/${userId}/reject`, { method: 'PUT' }, token, 3, false, 0); // 3 retries, no cache
+    const result = await this.apiCall(`/api/admin/users/${userId}/reject`, { method: 'POST' }, token, 3, false, 0); // 3 retries, no cache
     this.clearCache('users'); // Clear user-related cache after rejection
     return result;
   }

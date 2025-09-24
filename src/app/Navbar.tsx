@@ -184,10 +184,10 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
 
   async function handleLogout() {
     if (onLogout) {
-      onLogout();
+      await onLogout();
     } else {
       await fetch('/api/odjava', { method: 'POST', credentials: 'include' })
-      window.location.replace('/prijava')
+      window.location.replace('/login')
     }
   }
 

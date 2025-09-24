@@ -8,7 +8,7 @@ import Navbar from '../Navbar';
 import AdminNotifications from './korisnici/AdminNotifications';
 import { ThemeProvider } from '../ThemeContext';
 import ClientLayoutShell from '../ClientLayoutShell';
-import { AdminGuard } from '../../components/PermissionGuard';
+import { AdminPanelGuard } from '../../components/RoleBasedGuards';
 
 export default function AdminLayout({
   children,
@@ -19,17 +19,20 @@ export default function AdminLayout({
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  useEffect(() => {
-    if (!loading && (!user || !isAdmin)) {
-      router.push('/dashboard');
-    }
-  }, [user, isAdmin, loading, router]);
+  // Middleware sada radi rutiranje na osnovu role
+  // useEffect(() => {
+  //   if (!loading && user && !isAdmin) {
+  //     router.replace('/dashboard');
+  //   }
+  // }, [user, isAdmin, loading, router]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
+    router.push('/login');
   };
 
-  if (loading) {
+  // Optimizovano loading - prikaži sadržaj čim je user admin, bez čekanja
+  if (loading && !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
@@ -44,7 +47,7 @@ export default function AdminLayout({
   return (
     <ThemeProvider>
       <ClientLayoutShell>
-        <AdminGuard userId={user?.id}>
+        <AdminPanelGuard>
           <div className="flex h-screen bg-gray-100">
             {/* Navbar - fiksiran na vrhu */}
             <div className="fixed top-0 left-0 right-0 z-40">
@@ -77,7 +80,7 @@ export default function AdminLayout({
               </main>
             </div>
           </div>
-        </AdminGuard>
+        </AdminPanelGuard>
       </ClientLayoutShell>
     </ThemeProvider>
   );

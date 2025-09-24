@@ -1,473 +1,1845 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import Image from 'next/image';
-import UgrozenaLicaTable from './UgrozenaLicaTable';
-import NovoUgrozenoLiceModal from './NovoUgrozenoLiceModal';
-import UrediUgrozenoLiceModal from './UrediUgrozenoLiceModal';
-import ExportModal from './ExportModal';
-import ColumnsMenu from './ColumnsMenu';
-import { Button } from '@/components/ui/button';
-import UgrozenaLicaFilter from './UgrozenaLicaFilter';
-import UgrozenaLicaStatistika from './UgrozenaLicaStatistika';
-import { UgrozenoLice, UgrozenoLiceFormData, UgrozenoLiceResponse } from './types';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../../../contexts/AuthContext';
+import ErrorHandler from '../../components/ErrorHandler';
+import { apiService } from '../../../services/api';
 import { PermissionGuard } from '@/components/PermissionGuard';
-import { useAuth } from '@/contexts/AuthContext';
+import { webSocketService } from '../../../services/websocketService';
 
-const ALL_COLUMNS = [
-  "ugrozenoLiceId",
-  "ime",
-  "prezime",
-  "jmbg",
-  "datumRodjenja",
-  "drzavaRodjenja",
-  "mestoRodjenja",
-  "opstinaRodjenja",
-  "predmetId",
-];
+import NovoUgrozenoLiceModal from './NovoUgrozenoLiceModal';
+import UgrozenaLicaStatistika from './UgrozenaLicaStatistika';
+import UrediUgrozenoLiceModal from './UrediUgrozenoLiceModal';
+// Material UI Imports
+import {
+  Paper,
+} from '@mui/material';
+import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 
-const COLUMN_LABELS: Record<string, string> = {
-  ugrozenoLiceId: 'ID',
-  ime: 'Ime',
-  prezime: 'Prezime',
-  jmbg: 'JMBG',
-  datumRodjenja: 'Datum rođenja',
-  drzavaRodjenja: 'Država rođenja',
-  mestoRodjenja: 'Mesto rođenja',
-  opstinaRodjenja: 'Opština rođenja',
-  predmetId: 'ID predmeta',
-};
+// Icons Imports
+import { Add, FileDownload, FileUpload } from '@mui/icons-material';
+
+// Export imports
+import { mkConfig, generateCsv, download } from 'export-to-csv';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import ExportDialog from '../../components/ExportDialog';
+
+import { UgrozenoLiceT1, UgrozenoLiceFormData, UgrozenoLiceResponse } from './types';
+
+const csvConfig = mkConfig({
+  fieldSeparator: ',',
+  decimalSeparator: '.',
+  useKeysAsHeaders: true,
+});
 
 export default function UgrozenaLicaPage() {
-  const { user } = useAuth();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingUgrozenoLice, setEditingUgrozenoLice] = useState<UgrozenoLice | null>(null);
-  const [ugrozenaLica, setUgrozenaLica] = useState<UgrozenoLice[]>([]);
+  const router = useRouter();
+  const { token, user } = useAuth();
+  const [ugrozenaLica, setUgrozenaLica] = useState<UgrozenoLiceT1[]>([]);
   const [loading, setLoading] = useState(true);
-  const [retrying, setRetrying] = useState(false);
-  const [toast, setToast] = useState<{msg: string, type: 'success'|'error'}|null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [columnsOpen, setColumnsOpen] = useState(false);
-  const [columnOrder, setColumnOrder] = useState<string[]>(ALL_COLUMNS);
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(ALL_COLUMNS);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filterValues, setFilterValues] = useState<any>({});
-  const [activeTab, setActiveTab] = useState<'tabela' | 'statistika'>('tabela');
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [importProgress, setImportProgress] = useState({
+    isImporting: false,
+    current: 0,
+    total: 0,
+    percentage: 0,
+    estimatedTime: 0,
+    successCount: 0,
+    errorCount: 0
+  });
+  const [cancelImport, setCancelImport] = useState(false);
+  
+  // Debug import progress state
+  useEffect(() => {
+    console.log('Import progress state changed:', importProgress);
+    console.log('Modal should be visible:', importProgress.isImporting);
+    console.log('Current state:', {
+      isImporting: importProgress.isImporting,
+      current: importProgress.current,
+      total: importProgress.total,
+      percentage: importProgress.percentage
+    });
+  }, [importProgress]);
 
-  const fetchUgrozenaLica = async (retryCount = 0) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('page', page.toString());
-      params.append('size', rowsPerPage.toString());
-      
-      // Dodaj filtere ako postoje
-      Object.entries(filterValues).forEach(([key, value]) => {
-        if (value && value !== '') params.append(key, String(value));
-      });
-
-      const res = await fetch(`/api/euk/ugrozena-lica?${params.toString()}`);
-      
-      if (!res.ok) {
-        // Posebno rukovanje za 429 greške (Too Many Requests)
-        if (res.status === 429) {
-          const errorData = await res.json();
-          const retryAfter = errorData.retryAfter || 60;
+  // Poll batch progress function
+  const pollBatchProgress = async (batchId: string, batchNumber: number, totalBatches: number) => {
+    const maxAttempts = 60; // 30 seconds max (500ms * 60)
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`/api/euk/ugrozena-lica-t1/batch-progress/${batchId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const progress = await response.json();
+          console.log(`Batch ${batchNumber} progress:`, progress);
           
-          if (retryCount < 3) {
-            // Eksponencijalni backoff
-            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
-            setRetrying(true);
-            setToast({
-              msg: `Server je preopterećen. Pokušavam ponovo za ${Math.ceil(delay/1000)} sekundi...`,
-              type: 'error'
-            });
-            
-            setTimeout(() => {
-              setRetrying(false);
-              fetchUgrozenaLica(retryCount + 1);
-            }, delay);
-            return;
-          } else {
-            setToast({
-              msg: `Previše pokušaja. Molimo sačekajte ${retryAfter} sekundi pre ponovnog pokušaja.`,
-              type: 'error'
-            });
-            return;
+          // Update progress state
+          setImportProgress(prev => ({
+            ...prev,
+            successCount: prev.successCount + (progress.successRecords || 0),
+            errorCount: prev.errorCount + (progress.errorRecords || 0),
+            current: batchNumber,
+            percentage: Math.round((batchNumber / totalBatches) * 100),
+            estimatedTime: Math.round((totalBatches - batchNumber) * 0.2)
+          }));
+          
+          // If completed or error, stop polling
+          if (progress.status === 'COMPLETED' || progress.status === 'ERROR') {
+            console.log(`Batch ${batchNumber} finished with status: ${progress.status}`);
+            break;
           }
         }
-        
-        throw new Error(`HTTP greška: ${res.status}`);
+      } catch (error) {
+        console.error(`Error polling batch ${batchNumber} progress:`, error);
       }
+      
+      attempts++;
+      await new Promise(resolve => setTimeout(resolve, 500)); // Poll every 500ms
+    }
+    
+    if (attempts >= maxAttempts) {
+      console.warn(`Batch ${batchNumber} polling timeout after ${maxAttempts} attempts`);
+    }
+  };
 
-      const data: UgrozenoLiceResponse = await res.json();
-      
-      setUgrozenaLica(data.content || []);
-      setTotalPages(data.totalPages || 0);
-      setTotalElements(data.totalElements || 0);
-      
-      // Očisti toast ako je uspešno
-      if (toast && toast.type === 'error') {
-        setToast(null);
+  // Prevent ESC key from closing modal during import
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (importProgress.isImporting && e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
       }
-    } catch (error) {
-      setToast({
-        msg: 'Greška pri dohvatanju ugroženih lica. Pokušajte ponovo.',
-        type: 'error'
-      });
+    };
+
+    if (importProgress.isImporting) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [importProgress.isImporting]);
+
+  // Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [editingUgrozenoLice, setEditingUgrozenoLice] = useState<UgrozenoLiceT1 | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Sort configuration
+  const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'tabela' | 'statistika'>('tabela');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Funkcija za refresh podataka
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchUgrozenaLica();
+    setRefreshing(false);
+  };
+
+  const fetchUgrozenaLica = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError(null);
+    
+    try {
+      console.log('Fetching all ugrozena lica from database...');
+      
+      // Učitaj sve podatke kroz više stranica da pokrijemo celu bazu
+      let allUgrozenaLica: UgrozenoLiceT1[] = [];
+      let currentPage = 0;
+      let hasMoreData = true;
+      
+      while (hasMoreData) {
+        const params = new URLSearchParams();
+        params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
+        params.append('page', currentPage.toString());
+        
+        console.log(`Fetching page ${currentPage}...`);
+        const data = await apiService.getUgrozenaLica(params.toString(), token!);
+        const pageData = data.content || data;
+        
+        if (Array.isArray(pageData) && pageData.length > 0) {
+          allUgrozenaLica = [...allUgrozenaLica, ...pageData];
+          currentPage++;
+          
+          // Ako je broj rezultata manji od size, to je poslednja stranica
+          if (pageData.length < 1000) {
+            hasMoreData = false;
+          }
+          } else {
+          hasMoreData = false;
+        }
+      }
+      
+      console.log(`Fetched ${allUgrozenaLica.length} total records from ${currentPage} pages`);
+      setUgrozenaLica(allUgrozenaLica);
+    } catch (err) {
+      console.error('Error fetching ugrozena lica:', err);
+      setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  // Filter pretraga - koristi server-side pretragu kroz celu bazu
+  const handleFilterSearch = async () => {
+    if (!token) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Proveri da li ima bilo koji filter
+      const hasFilters = Object.values(filters).some(value => value && value.toString().trim() !== '');
+      
+      if (!hasFilters) {
+        // Ako nema filtera, učitaj sve podatke iz baze
+        await fetchUgrozenaLica(false);
+            return;
+      }
+      
+      // Pripremi filtere za server - pretražuje celu bazu, ne samo trenutnu stranicu
+      const serverFilters: Record<string, unknown> = {};
+      
+      // Dodaj samo ne-prazne filtere - server će pretražiti celu bazu
+      if (filters.redniBroj.trim()) serverFilters.redniBroj = filters.redniBroj.trim();
+      if (filters.ime.trim()) serverFilters.ime = filters.ime.trim();
+      if (filters.prezime.trim()) serverFilters.prezime = filters.prezime.trim();
+      if (filters.jmbg.trim()) serverFilters.jmbg = filters.jmbg.trim();
+      if (filters.gradOpstina.trim()) serverFilters.gradOpstina = filters.gradOpstina.trim();
+      if (filters.mesto.trim()) serverFilters.mesto = filters.mesto.trim();
+      if (filters.osnovSticanjaStatusa.trim()) serverFilters.osnovSticanjaStatusa = filters.osnovSticanjaStatusa.trim();
+      if (filters.datumTrajanjaPravaOd.trim()) serverFilters.datumTrajanjaPravaOd = filters.datumTrajanjaPravaOd.trim();
+      if (filters.datumTrajanjaPravaDo.trim()) serverFilters.datumTrajanjaPravaDo = filters.datumTrajanjaPravaDo.trim();
+      
+      console.log('Sending filters to server for full database search:', serverFilters);
+      
+      // Koristi napredni filter endpoint za server-side pretragu kroz celu bazu
+      const searchResults = await apiService.searchUgrozenoLiceByFilters(serverFilters, token);
+      const ugrozenaLicaData = searchResults.content || searchResults;
+      setUgrozenaLica(ugrozenaLicaData);
+      
+      console.log('Server returned:', ugrozenaLicaData.length, 'results from full database search');
+    } catch (err) {
+      console.error('Error in filter search:', err);
+      setError(err instanceof Error ? err.message : 'Greška pri pretrazi');
     } finally {
       setLoading(false);
     }
   };
 
-  // Debouncing za filtere - čekaj 500ms pre slanja zahteva
+  // Load data when token is available - JEDNOM PRI UČITAVANJU STRANICE
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
+    if (token) {
       fetchUgrozenaLica();
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [page, rowsPerPage, filterValues]);
-
-  // Memoizuj fetchUgrozenaLica funkciju da izbegnemo infinite loop
-  const memoizedFetchUgrozenaLica = React.useCallback(fetchUgrozenaLica, [page, rowsPerPage, filterValues]);
-
-  const handleAdd = async (novo: UgrozenoLiceFormData) => {
-    try {
-      const res = await fetch('/api/euk/ugrozena-lica', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(novo),
-      });
-      
-      if (res.ok) {
-        setToast({msg: 'Ugroženo lice uspešno dodato!', type: 'success'});
-        setModalOpen(false);
-        fetchUgrozenaLica();
-      } else {
-        // Posebno rukovanje za 429 greške
-        if (res.status === 429) {
-          const errorData = await res.json();
-          setToast({
-            msg: `Server je preopterećen. Molimo sačekajte ${errorData.retryAfter || 60} sekundi.`,
-            type: 'error'
-          });
-          return;
-        }
-        
-        const err = await res.json();
-        setToast({msg: err.error || 'Greška pri unosu.', type: 'error'});
-      }
-    } catch (error) {
-      setToast({msg: 'Greška pri unosu.', type: 'error'});
     }
-    setTimeout(() => setToast(null), 3000);
+  }, [token]); // Prazan dependency array - učitava se samo jednom
+
+  // WebSocket za real-time updates
+  useEffect(() => {
+    if (!token) return;
+
+    console.log('Subscribing to WebSocket updates for ugrozena lica...');
+    
+    // Subscribe na ugrozena lica updates
+    webSocketService.subscribeToPredmetiUpdates((data) => {
+      console.log('Ugrozena lica update received:', data);
+      
+      // Handle different types of updates
+      if (data.type === 'ugrozeno_lice_updated' || data.type === 'ugrozeno_lice_created' || data.type === 'ugrozeno_lice_deleted') {
+        console.log('Refreshing ugrozena lica data due to WebSocket update');
+        fetchUgrozenaLica(false); // Don't show loading spinner for background updates
+      }
+    });
+
+    // Subscribe na general messages
+    webSocketService.subscribeToGeneralMessages((data) => {
+      console.log('General message received:', data);
+    });
+
+    // Cleanup na unmount - ne zatvaramo konekciju jer je shared service
+    return () => {
+      console.log('Unsubscribing from WebSocket updates');
+      webSocketService.unsubscribe('/topic/ugrozena-lica');
+      webSocketService.unsubscribe('/topic/messages');
+    };
+  }, [token]);
+
+  const handleModalSuccess = () => {
+        fetchUgrozenaLica();
   };
 
-  const handleExport = (columns: string[]) => {
-    const headers = columns.map(col => COLUMN_LABELS[col] || col);
-    const rows = ugrozenaLica.map((lice: UgrozenoLice) => {
-      return columns.map(col => {
-        const value = lice[col as keyof UgrozenoLice];
-        if (col === 'datumRodjenja' && value) {
-          return new Date(value).toLocaleDateString('sr-RS');
-        }
-        return value || '';
-      });
+  // Funkcija za slanje poruka preko WebSocket-a
+  const sendWebSocketMessage = (content: string, type: string = 'general') => {
+    webSocketService.sendMessage(content, type);
+  };
+
+  // Funkcija za notifikaciju promene ugroženog lica
+  const notifyUgrozenoLiceChange = (type: 'created' | 'updated' | 'deleted', ugrozenoLiceId: number) => {
+    webSocketService.notifyPredmetChange(type, ugrozenoLiceId);
+  };
+
+  // Custom kebab menu functions
+  const handleSort = (field: string, direction: 'asc' | 'desc') => {
+    setSortConfig({ field, direction });
+    
+    // Apply sorting to ugrozena lica
+    const sortedUgrozenaLica = [...ugrozenaLica].sort((a, b) => {
+      let aValue: any = a[field as keyof UgrozenoLiceT1];
+      let bValue: any = b[field as keyof UgrozenoLiceT1];
+      
+      // Handle special cases
+      if (field === 'datumIzdavanjaRacuna') {
+        aValue = aValue ? new Date(aValue) : new Date(0);
+        bValue = bValue ? new Date(bValue) : new Date(0);
+      } else if (field === 'datumTrajanjaPrava') {
+        aValue = aValue ? new Date(aValue) : new Date(0);
+        bValue = bValue ? new Date(bValue) : new Date(0);
+      } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+        // For Serbian alphabet sorting
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+      
+      if (direction === 'asc') {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+      }
     });
     
-    const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'ugrozena-lica.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    setUgrozenaLica(sortedUgrozenaLica);
   };
 
-  const handleSelect = (id: number, checked: boolean) => {
-    setSelectedIds(prev => checked ? [...prev, id] : prev.filter(x => x !== id));
+  const handleFilter = (_field: string) => {
+    setShowFilters(true);
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(ugrozenaLica.map(lice => lice.ugrozenoLiceId));
-    } else {
-      setSelectedIds([]);
-    }
-  };
+  // Simple header renderer - no kebab menu
+  const renderSimpleHeader = useCallback((title: string) => {
+    return (
+      <span className="font-semibold text-gray-900">{title}</span>
+    );
+  }, []);
 
-  const handleDelete = async (id: number) => {
+  // Export functions
+  const handleImport = async (file: File) => {
     try {
-      const res = await fetch(`/api/euk/ugrozena-lica/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setToast({msg: 'Ugroženo lice uspešno obrisano!', type: 'success'});
-        fetchUgrozenaLica();
-      } else {
-        // Posebno rukovanje za 429 greške
-        if (res.status === 429) {
-          const errorData = await res.json();
-          setToast({
-            msg: `Server je preopterećen. Molimo sačekajte ${errorData.retryAfter || 60} sekundi.`,
-            type: 'error'
-          });
-          return;
-        }
-        
-        const err = await res.json();
-        setToast({msg: err.error || 'Greška pri brisanju.', type: 'error'});
-      }
-    } catch (error) {
-      setToast({msg: 'Greška pri brisanju.', type: 'error'});
-    }
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleEdit = (ugrozenoLice: UgrozenoLice) => {
-    setEditingUgrozenoLice(ugrozenoLice);
-    setEditModalOpen(true);
-  };
-
-  const handleUpdate = async (updatedUgrozenoLice: UgrozenoLiceFormData) => {
-    if (!editingUgrozenoLice) return;
-    try {
-      const res = await fetch(`/api/euk/ugrozena-lica/${editingUgrozenoLice.ugrozenoLiceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedUgrozenoLice),
+      setLoading(true);
+      
+      // Read Excel file using XLSX (JavaScript equivalent of openpyxl)
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { 
+        type: 'array',
+        cellStyles: true,
+        cellNF: true,
+        cellHTML: false
       });
-      if (res.ok) {
-        setToast({msg: 'Ugroženo lice uspešno ažurirano!', type: 'success'});
-        setEditModalOpen(false);
-        setEditingUgrozenoLice(null);
-        fetchUgrozenaLica();
-      } else {
-        // Posebno rukovanje za 429 greške
-        if (res.status === 429) {
-          const errorData = await res.json();
-          setToast({
-            msg: `Server je preopterećen. Molimo sačekajte ${errorData.retryAfter || 60} sekundi.`,
-            type: 'error'
-          });
-          return;
+      
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      console.log('Import file loaded successfully');
+      
+      // Get the range to find data
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      console.log('Import range:', worksheet['!ref']);
+      
+      // Extract data using openpyxl-style approach
+      const importData: any[] = [];
+      const columns = [
+        'ugrozenoLiceId', 'redniBroj', 'ime', 'prezime', 'jmbg',
+        'pttBroj', 'gradOpstina', 'mesto', 'ulicaIBroj', 'brojClanovaDomacinstva',
+        'osnovSticanjaStatusa', 'edBrojBrojMernogUredjaja', 'potrosnjaIPovrsinaCombined',
+        'iznosUmanjenjaSaPdv', 'brojRacuna'
+      ];
+      
+      // Iterate through all rows (openpyxl style)
+      for (let row = 1; row <= range.e.r + 1; row++) {
+        const rowData: any = {};
+        let hasData = false;
+        
+        // Check if this row has any data (openpyxl style check)
+        for (let col = 0; col < 15; col++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
+          const cell = worksheet[cellAddress];
+          if (cell && cell.v !== null && cell.v !== undefined && cell.v !== '') {
+            hasData = true;
+            break;
+          }
         }
         
-        const err = await res.json();
-        setToast({msg: err.error || 'Greška pri ažuriranju.', type: 'error'});
+        // Skip empty rows (openpyxl style)
+        if (!hasData) {
+          continue;
+        }
+        
+        // Check for footer patterns (signature, potpis, etc.)
+        const cellA = worksheet[XLSX.utils.encode_cell({ r: row - 1, c: 0 })];
+        if (cellA && cellA.v && typeof cellA.v === 'string') {
+          const cellValue = cellA.v.toString().toLowerCase();
+          if (cellValue.includes('potpis') || cellValue.includes('signature') || 
+              cellValue.includes('м.п.') || cellValue.includes('заменик') ||
+              cellValue.includes('секретар') || cellValue.includes('градска управа')) {
+            console.log(`Stopping at row ${row} - footer pattern detected: ${cellValue}`);
+            break;
+          }
+        }
+        
+        // Extract data from A-O columns (15 columns) - openpyxl style
+        for (let col = 0; col < 15; col++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
+          const cell = worksheet[cellAddress];
+          const value = cell ? cell.v : null;
+          
+          if (value !== null && value !== undefined && value !== '') {
+            rowData[columns[col]] = value;
+          }
+        }
+        
+        // Only add if we have essential data
+        if (rowData.redniBroj || rowData.ime || rowData.prezime || rowData.jmbg) {
+          importData.push(rowData);
+        }
       }
+      
+      console.log(`Extracted ${importData.length} records for import`);
+      console.log('Sample import data:', importData[0]);
+      console.log('All import data:', importData);
+      
+      if (importData.length === 0) {
+        alert('Nema podataka za import! Proverite da li je Excel fajl u ispravnom formatu.');
+        return;
+      }
+      
+      // Show progress modal IMMEDIATELY - before any confirm dialogs
+      const BATCH_SIZE = 100; // Process 100 items at a time
+      const totalBatches = Math.ceil(importData.length / BATCH_SIZE);
+      console.log(`Total batches: ${totalBatches}`);
+      
+      // Initialize progress state IMMEDIATELY
+      setCancelImport(false);
+      setImportProgress({
+        isImporting: true,
+        current: 0,
+        total: totalBatches,
+        percentage: 0,
+        estimatedTime: Math.round(totalBatches * 0.2), // ~20 seconds per batch
+        successCount: 0,
+        errorCount: 0
+      });
+      
+      console.log('Cancel import state:', cancelImport);
+      console.log('Progress state set to:', { isImporting: true, current: 0, total: totalBatches });
+      
+      // Force UI update to show modal IMMEDIATELY
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      console.log('Modal should be visible now:', importProgress.isImporting);
+      
+      // Import data to backend using batch processing
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+      
+      // Batch configuration
+      const BATCH_DELAY = 200; // 200ms delay between batches
+      
+      console.log(`Starting batch import of ${importData.length} items with batch size ${BATCH_SIZE}`);
+      
+      // Show initial progress - remove alert, use modal instead
+      console.log(`Početak importa: ${importData.length} zapisa u ${totalBatches} batch-ova\nProcijenjeno vreme: ~${Math.round(totalBatches * 0.2)} minuta`);
+      
+      // Process data in batches
+      console.log(`Processing ${importData.length} items in batches of ${BATCH_SIZE}`);
+      for (let i = 0; i < importData.length; i += BATCH_SIZE) {
+        // Check for cancellation
+        console.log('Checking cancellation state:', cancelImport);
+        if (cancelImport) {
+          console.log('Import cancelled by user');
+          break;
+        }
+        
+        const batch = importData.slice(i, i + BATCH_SIZE);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        
+        console.log(`Processing batch ${batchNumber}/${totalBatches} with ${batch.length} items`);
+        
+        const percentage = Math.round((batchNumber / totalBatches) * 100);
+        const estimatedTime = Math.round((totalBatches - batchNumber) * 0.2);
+        
+        // Update progress state
+        setImportProgress({
+          isImporting: true,
+          current: batchNumber,
+          total: totalBatches,
+          percentage,
+          estimatedTime,
+          successCount,
+          errorCount
+        });
+        
+        // Force UI update
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        console.log(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} items) - Progress: ${percentage}% - Estimated time: ${estimatedTime} min`);
+        
+        try {
+          // Prepare batch data
+          const batchData = batch.map(item => {
+            // Validate essential data
+            if (!item.redniBroj && !item.ime && !item.prezime && !item.jmbg) {
+              throw new Error('Nedostaju osnovni podaci (redni broj, ime, prezime ili JMBG)');
+            }
+            
+            return {
+              redniBroj: (item.redniBroj || '').toString().substring(0, 20),
+              ime: (item.ime || '').toString(),
+              prezime: (item.prezime || '').toString(),
+              jmbg: (item.jmbg || '').toString(),
+              pttBroj: (item.pttBroj || '').toString().substring(0, 10),
+              gradOpstina: (item.gradOpstina || '').toString(),
+              mesto: (item.mesto || '').toString(),
+              ulicaIBroj: (item.ulicaIBroj || '').toString(),
+              brojClanovaDomacinstva: item.brojClanovaDomacinstva ? Number(item.brojClanovaDomacinstva) : undefined,
+              osnovSticanjaStatusa: (item.osnovSticanjaStatusa || '').toString().substring(0, 50),
+              edBrojBrojMernogUredjaja: (item.edBrojBrojMernogUredjaja || '').toString(),
+              potrosnjaIPovrsinaCombined: (item.potrosnjaIPovrsinaCombined || '').toString(),
+              iznosUmanjenjaSaPdv: item.iznosUmanjenjaSaPdv ? Number(item.iznosUmanjenjaSaPdv) : undefined,
+              brojRacuna: (item.brojRacuna || '').toString()
+            };
+          });
+          
+          // Try new batch progress API first, fallback to old batch API
+          try {
+            console.log(`Calling batch progress API for batch ${batchNumber} with ${batchData.length} items`);
+            
+            // Try new batch progress API
+            const response = await fetch('/api/euk/ugrozena-lica-t1/batch-progress', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(batchData)
+            });
+            
+            if (response.ok) {
+              const result = await response.json();
+              console.log(`Batch progress API response:`, result);
+              
+              if (result.batchId) {
+                // Start polling for progress
+                await pollBatchProgress(result.batchId, batchNumber, totalBatches);
+                successCount += batchData.length; // Assume all processed if batch completed
+                console.log(`✅ Batch ${batchNumber}/${totalBatches}: ${batchData.length} records processed via batch progress API`);
+    } else {
+                throw new Error('Batch progress API did not return batchId');
+              }
+            } else {
+              throw new Error(`Batch progress API failed: ${response.status}`);
+            }
+          } catch (batchError) {
+            console.log(`Batch progress API failed, trying old batch API for batch ${batchNumber}`);
+            
+            try {
+              // Try old batch API as fallback
+              const response = await apiService.createUgrozenoLiceBatch(batchData, token!);
+              console.log(`Old batch API response:`, response);
+              
+              if (response && response.totalProcessed) {
+                successCount += response.totalProcessed;
+                console.log(`✅ Batch ${batchNumber}/${totalBatches}: ${response.totalProcessed} records processed via old batch API`);
+                
+                // Update progress state with new success count
+                setImportProgress(prev => ({
+                  ...prev,
+                  successCount: successCount,
+                  current: batchNumber,
+                  percentage: Math.round((batchNumber / totalBatches) * 100),
+                  estimatedTime: Math.round((totalBatches - batchNumber) * 0.2)
+                }));
+      } else {
+                throw new Error('Old batch API returned empty response');
+              }
+            } catch (oldBatchError) {
+              console.log(`Old batch API also failed, falling back to individual requests for batch ${batchNumber}`);
+              
+              // Fallback to individual requests
+              let batchSuccessCount = 0;
+              for (const item of batchData) {
+                try {
+                  const response = await apiService.createUgrozenoLice(item, token!);
+                  if (response) {
+                    batchSuccessCount++;
+                  }
+                } catch (itemError) {
+                  console.error(`Individual item failed:`, itemError);
+                  // Continue with next item instead of stopping
+                }
+              }
+              
+              successCount += batchSuccessCount;
+              console.log(`✅ Batch ${batchNumber}/${totalBatches}: ${batchSuccessCount}/${batchData.length} records processed via fallback`);
+              
+              // Update progress state with new success count
+              setImportProgress(prev => ({
+                ...prev,
+                successCount: successCount,
+                current: batchNumber,
+                percentage: Math.round((batchNumber / totalBatches) * 100),
+                estimatedTime: Math.round((totalBatches - batchNumber) * 0.2)
+              }));
+            }
+          }
+          
     } catch (error) {
-      setToast({msg: 'Greška pri ažuriranju.', type: 'error'});
+          errorCount += batch.length;
+          const errorMessage = error instanceof Error ? error.message : 'Nepoznata greška';
+          errors.push(`Batch ${batchNumber}: ${errorMessage}`);
+          console.error(`❌ Batch ${batchNumber}/${totalBatches} failed:`, error);
+          
+          // If too many errors, stop importing
+          if (errorCount >= 1000) {
+            console.error('Too many errors, stopping import');
+            break;
+          }
+        }
+        
+        // Add delay between batches (except for the last batch)
+        if (i + BATCH_SIZE < importData.length) {
+          console.log(`Waiting ${BATCH_DELAY}ms before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        }
+      }
+      
+      // Keep modal open until import is complete
+      console.log('Import completed successfully');
+      console.log(`Final results: ${successCount} successful, ${errorCount} errors`);
+      
+      // Show completion message in modal
+      setImportProgress(prev => ({
+        ...prev,
+        isImporting: true, // Keep modal open
+        current: totalBatches,
+        total: totalBatches,
+        percentage: 100,
+        estimatedTime: 0,
+        successCount: successCount,
+        errorCount: errorCount
+      }));
+      
+      // Wait 5 seconds then close modal
+      setTimeout(() => {
+        setCancelImport(false);
+        setImportProgress({
+          isImporting: false,
+          current: 0,
+          total: 0,
+          percentage: 0,
+          estimatedTime: 0,
+          successCount: 0,
+          errorCount: 0
+        });
+      }, 5000);
+      
+      // Show results
+      if (errorCount === 0) {
+        alert(`Uspešno je importovano ${successCount} zapisa!`);
+      } else {
+        alert(`Import završen!\nUspešno: ${successCount}\nGreške: ${errorCount}\n\nPrve greške:\n${errors.slice(0, 5).join('\n')}`);
+      }
+      
+      // Refresh data
+      await fetchUgrozenaLica();
+      
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('Greška pri importu fajla! Proverite da li je fajl u ispravnom Excel formatu.');
+    } finally {
+      setLoading(false);
     }
-    setTimeout(() => setToast(null), 3000);
   };
 
-  const handleToggleColumn = (col: string) => {
-    setVisibleColumns(cols => cols.includes(col) ? cols.filter(c => c !== col) : [...cols, col]);
-  };
-
-  // Sortiranje po srpskoj abecedi na frontendu
-  const handleSortByName = () => {
-    const sorted = [...ugrozenaLica].sort((a, b) => {
-      const imeA = `${a.ime || ''} ${a.prezime || ''}`.trim();
-      const imeB = `${b.ime || ''} ${b.prezime || ''}`.trim();
-      return imeA.localeCompare(imeB, 'sr', { sensitivity: 'base' });
+  const handleExport = async (selectedColumns: string[], format: string, data: Record<string, unknown>[]) => {
+    // Filter data to only include selected columns
+    const filteredData = data.map(item => {
+      const filteredItem: Record<string, unknown> = {};
+      selectedColumns.forEach(col => {
+        filteredItem[col] = item[col];
+      });
+      return filteredItem;
     });
-    setUgrozenaLica(sorted);
+
+    switch (format) {
+      case 'csv':
+        const csv = generateCsv(csvConfig)(filteredData as Record<string, string | number>[]);
+        download(csvConfig)(csv);
+        break;
+      case 'excel':
+        try {
+          console.log('Starting Excel export with template approach...');
+          
+          // Load Excel template
+          const templateResponse = await fetch('/excelTemplate/ЕУК-T1.xlsx');
+          const templateBuffer = await templateResponse.arrayBuffer();
+          
+          // Create a complete copy of the template workbook - preserves ALL formatting
+          const templateWorkbook = XLSX.read(templateBuffer, { 
+            type: 'array',
+            cellStyles: true,
+            cellNF: true,
+            cellHTML: false
+          });
+          
+          // Get the first worksheet (template)
+          const templateSheetName = templateWorkbook.SheetNames[0];
+          const templateWorksheet = templateWorkbook.Sheets[templateSheetName];
+          
+          console.log('Template loaded successfully');
+          
+          // Prepare data for insertion - EXACTLY like your Python example
+          // Each row is one "kupac" - Redosled je: A - O kolona (15 vrednosti)
+          // Use ALL data, not just filteredData (which might be paginated)
+          const dataToAdd = ugrozenaLica.map(item => [
+            item.ugrozenoLiceId || '',           // A: ID
+            item.redniBroj || '',                // B: Redni broj
+            item.ime || '',                      // C: Ime
+            item.prezime || '',                  // D: Prezime
+            item.jmbg || '',                     // E: JMBG
+            item.pttBroj || '',                  // F: PTT broj
+            item.gradOpstina || '',              // G: Grad/Opština
+            item.mesto || '',                    // H: Mesto
+            item.ulicaIBroj || '',               // I: Ulica i broj
+            item.brojClanovaDomacinstva || '',   // J: Broj članova
+            item.osnovSticanjaStatusa || '',     // K: Osnov sticanja
+            item.edBrojBrojMernogUredjaja || '', // L: ED broj
+            item.potrosnjaIPovrsinaCombined || '', // M: Potrošnja i površina
+            item.iznosUmanjenjaSaPdv || '',      // N: Iznos umanjenja
+            item.brojRacuna || ''                // O: Broj računa
+          ]);
+          
+          console.log(`Prepared ${dataToAdd.length} rows of data for export`);
+          console.log('Sample data row:', dataToAdd[0]);
+          console.log('Total ugrozenaLica length:', ugrozenaLica.length);
+          console.log('Filtered data length:', filteredData.length);
+          
+          // --- 1. Sačuvaj sadržaj ispod tabele (footer je od reda 14 do kraja) ---
+          const footerStart = 14; // Footer starts at row 14 (based on template analysis)
+          const footerRows = [];
+          
+          // Get current range to find max row
+          const currentRange = XLSX.utils.decode_range(templateWorksheet['!ref'] || 'A1');
+          const maxRow = currentRange.e.r + 1; // Convert to 1-based
+          
+          console.log(`Saving footer content from row ${footerStart} to ${maxRow}`);
+          
+          // Save footer rows with all formatting
+          for (let row = footerStart; row <= maxRow; row++) {
+            const footerRow = [];
+            for (let col = 0; col < 15; col++) { // A-O columns
+              const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
+              const cell = templateWorksheet[cellAddress];
+              if (cell) {
+                footerRow.push({
+                  value: cell.v,
+                  style: cell.s,
+                  type: cell.t
+                });
+    } else {
+                footerRow.push(null);
+              }
+            }
+            footerRows.push(footerRow);
+          }
+          
+          console.log(`Saved ${footerRows.length} footer rows`);
+          if (footerRows.length > 0) {
+            console.log('First footer row sample:', footerRows[0].slice(0, 5));
+          }
+          
+          // --- 2. Obriši sve te redove da ne smetaju ---
+          // Clear footer rows (set to undefined to remove them)
+          for (let row = footerStart; row <= maxRow; row++) {
+            for (let col = 0; col < 15; col++) {
+              const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
+              delete templateWorksheet[cellAddress];
+            }
+          }
+          
+          console.log('Cleared footer rows');
+          
+          // --- 3. Upisi podatke ---
+          const startRow = 9; // A9
+          
+          for (let i = 0; i < dataToAdd.length; i++) {
+            const rowData = dataToAdd[i];
+            const rowNum = startRow + i;
+            
+            for (let j = 0; j < rowData.length; j++) {
+              const colNum = j + 1; // A=1, B=2, etc.
+              const cellAddress = XLSX.utils.encode_cell({ r: rowNum - 1, c: colNum - 1 });
+              
+              // Set cell value
+              templateWorksheet[cellAddress] = { v: rowData[j] };
+            }
+          }
+          
+          console.log(`Data inserted from A${startRow} to O${startRow + dataToAdd.length - 1}`);
+          
+          // --- 4. Ubaci footer odmah ispod poslednjeg reda podataka ---
+          const newFooterStart = startRow + dataToAdd.length + 1; // +1 for spacing
+          
+          for (let i = 0; i < footerRows.length; i++) {
+            const footerRow = footerRows[i];
+            const newRowNum = newFooterStart + i;
+            
+            for (let j = 0; j < footerRow.length; j++) {
+              const oldCell = footerRow[j];
+              if (oldCell) {
+                const cellAddress = XLSX.utils.encode_cell({ r: newRowNum - 1, c: j });
+                const newCell = { v: oldCell.value, t: oldCell.type };
+                
+                // Copy all formatting
+                if (oldCell.style) {
+                  (newCell as any).s = oldCell.style;
+                }
+                
+                templateWorksheet[cellAddress] = newCell;
+              }
+            }
+          }
+          
+          console.log(`Footer inserted starting from row ${newFooterStart}`);
+          console.log(`Footer rows to insert: ${footerRows.length}`);
+          if (footerRows.length > 0) {
+            console.log('Footer insertion sample:', footerRows[0].slice(0, 5));
+          }
+          
+          // --- 5. Smanji visinu reda 19 (footer red) ---
+          const footerRowToResize = newFooterStart + 5; // Row 19 (14 + 5 = 19)
+          if (templateWorksheet['!rows']) {
+            templateWorksheet['!rows'][footerRowToResize - 1] = { hpt: 15 }; // Smanji visinu na 15pt
+            console.log(`Reduced height of row ${footerRowToResize} to 15pt`);
+      } else {
+            templateWorksheet['!rows'] = [];
+            templateWorksheet['!rows'][footerRowToResize - 1] = { hpt: 15 };
+            console.log(`Created !rows and reduced height of row ${footerRowToResize} to 15pt`);
+          }
+          
+          // Update range to include new data and footer
+          const newRange = XLSX.utils.decode_range(templateWorksheet['!ref'] || 'A1');
+          const finalDataEndRow = newFooterStart + footerRows.length - 1;
+          newRange.e.r = Math.max(newRange.e.r, finalDataEndRow - 1);
+          templateWorksheet['!ref'] = XLSX.utils.encode_range(newRange);
+          
+          // Generate filename
+          let filename = 'ЕУК-Т1-Угрожена-лица';
+          if (filters.datumTrajanjaPravaOd || filters.datumTrajanjaPravaDo) {
+            const dateFrom = filters.datumTrajanjaPravaOd ? filters.datumTrajanjaPravaOd.replace(/-/g, '') : '00000000';
+            const dateTo = filters.datumTrajanjaPravaDo ? filters.datumTrajanjaPravaDo.replace(/-/g, '') : '99999999';
+            filename += `_${dateFrom}-${dateTo}`;
+          }
+          filename += '.xlsx';
+          
+          // Save the template with data - template stays EXACTLY the same
+          // Only data is inserted, no formatting changes
+          XLSX.writeFile(templateWorkbook, filename);
+          console.log(`Excel file saved: ${filename} with ${dataToAdd.length} rows - template unchanged`);
+          
+    } catch (error) {
+          console.error('Error with Excel template export:', error);
+          // Fallback to simple Excel export
+          const workbook = XLSX.utils.book_new();
+          const worksheet = XLSX.utils.json_to_sheet(filteredData);
+          const columnWidths = selectedColumns.map(col => ({ wch: Math.max(col.length, 15) }));
+          worksheet['!cols'] = columnWidths;
+          XLSX.utils.book_append_sheet(workbook, worksheet, 'Ugrozena Lica');
+          XLSX.writeFile(workbook, 'ugrozena-lica.xlsx');
+        }
+        break;
+      case 'pdf':
+        // Create PDF with Unicode support
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'a4'
+        });
+        
+        // Add title
+        pdf.setFontSize(16);
+        pdf.text('ЕУК-Т1 Угрожена лица', 14, 20);
+        
+        // Add filter info if filters are applied
+        let yPosition = 30;
+        if (filters.datumTrajanjaPravaOd || filters.datumTrajanjaPravaDo) {
+          pdf.setFontSize(10);
+          pdf.text('Применени филтери:', 14, yPosition);
+          yPosition += 5;
+          
+          if (filters.datumTrajanjaPravaOd) {
+            pdf.text(`Датум трајања права ОД: ${filters.datumTrajanjaPravaOd}`, 14, yPosition);
+            yPosition += 5;
+          }
+          if (filters.datumTrajanjaPravaDo) {
+            pdf.text(`Датум трајања права ДО: ${filters.datumTrajanjaPravaDo}`, 14, yPosition);
+            yPosition += 5;
+          }
+          yPosition += 5; // Extra space
+        }
+        
+        // Prepare table data
+        const tableData = filteredData.map(item => 
+          selectedColumns.map(col => item[col] || '')
+        );
+        
+        // Add table
+        autoTable(pdf, {
+          head: [selectedColumns.map(col => {
+            // Map ćirilične nazive na latinične za PDF kompatibilnost
+            const headerMap: Record<string, string> = {
+              'ugrozenoLiceId': 'ID',
+              'redniBroj': 'Redni broj',
+              'ime': 'Ime',
+              'prezime': 'Prezime',
+              'jmbg': 'JMBG',
+              'pttBroj': 'PTT broj',
+              'gradOpstina': 'Grad/Opština',
+              'mesto': 'Mesto',
+              'ulicaIBroj': 'Ulica i broj',
+              'brojClanovaDomacinstva': 'Broj članova domaćinstva',
+              'osnovSticanjaStatusa': 'Osnov sticanja statusa',
+              'edBrojBrojMernogUredjaja': 'ED broj/broj mernog uređaja',
+              'potrosnjaIPovrsinaCombined': 'Potrošnja i površina',
+              'iznosUmanjenjaSaPdv': 'Iznos umanjenja sa PDV',
+              'brojRacuna': 'Broj računa',
+              'datumIzdavanjaRacuna': 'Datum izdavanja računa'
+            };
+            return headerMap[col] || col;
+          })],
+          body: tableData,
+          startY: yPosition,
+          styles: {
+            fontSize: 10,
+            cellPadding: 3,
+          },
+          headStyles: {
+            fillColor: [102, 126, 234],
+            textColor: 255,
+            fontStyle: 'bold',
+          },
+          alternateRowStyles: {
+            fillColor: [245, 245, 245],
+          },
+        });
+        
+        // Generate filename with date range if filters are applied
+        let pdfFilename = 'ЕУК-Т1-Угрожена-лица';
+        if (filters.datumTrajanjaPravaOd || filters.datumTrajanjaPravaDo) {
+          const dateFrom = filters.datumTrajanjaPravaOd ? filters.datumTrajanjaPravaOd.replace(/-/g, '') : '00000000';
+          const dateTo = filters.datumTrajanjaPravaDo ? filters.datumTrajanjaPravaDo.replace(/-/g, '') : '99999999';
+          pdfFilename += `_${dateFrom}-${dateTo}`;
+        }
+        pdfFilename += '.pdf';
+        
+        pdf.save(pdfFilename);
+        break;
+      default:
+        console.log('Unknown format:', format);
+    }
   };
 
-  const handleSortByDatumRodjenja = () => {
-    const sorted = [...ugrozenaLica].sort((a, b) => {
-      const dA = a.datumRodjenja ? new Date(a.datumRodjenja).getTime() : 0;
-      const dB = b.datumRodjenja ? new Date(b.datumRodjenja).getTime() : 0;
-      return dB - dA;
-    });
-    setUgrozenaLica(sorted);
-  };
+  const columns: GridColDef[] = useMemo(() => ([
+    { 
+      field: 'redniBroj', 
+      headerName: 'редни број', 
+      width: 120,
+      renderHeader: () => renderSimpleHeader('редни број')
+    },
+    { 
+      field: 'ime', 
+      headerName: 'име', 
+      width: 150,
+      renderHeader: () => renderSimpleHeader('име')
+    },
+    { 
+      field: 'prezime', 
+      headerName: 'презиме', 
+      width: 150,
+      renderHeader: () => renderSimpleHeader('презиме')
+    },
+    { 
+      field: 'jmbg', 
+      headerName: 'јмбг', 
+      width: 140,
+      renderHeader: () => renderSimpleHeader('јмбг')
+    },
+    { 
+      field: 'pttBroj', 
+      headerName: 'птт број', 
+      width: 100,
+      renderHeader: () => renderSimpleHeader('птт број')
+    },
+    { 
+      field: 'gradOpstina', 
+      headerName: 'град/општина', 
+      width: 150,
+      renderHeader: () => renderSimpleHeader('град/општина')
+    },
+    { 
+      field: 'mesto', 
+      headerName: 'место', 
+      width: 120,
+      renderHeader: () => renderSimpleHeader('место')
+    },
+    { 
+      field: 'ulicaIBroj', 
+      headerName: 'улица и број', 
+      width: 180,
+      renderHeader: () => renderSimpleHeader('улица и број')
+    },
+    { 
+      field: 'brojClanovaDomacinstva', 
+      headerName: 'број чланова', 
+      width: 120,
+      renderHeader: () => renderSimpleHeader('број чланова')
+    },
+    { 
+      field: 'osnovSticanjaStatusa', 
+      headerName: 'основ стицања', 
+      width: 140,
+      renderHeader: () => renderSimpleHeader('основ стицања'),
+      renderCell: (params: GridRenderCellParams) => {
+        const osnov = params.value;
+        let bgColor = '#f3f4f6';
+        let textColor = '#374151';
+        let borderColor = '#d1d5db';
+        let displayText = osnov;
+        
+        switch (osnov) {
+          case 'MP':
+            bgColor = '#ecfdf5';
+            textColor = '#065f46';
+            borderColor = '#10b981';
+            displayText = 'MP';
+            break;
+          case 'NSP':
+            bgColor = '#eff6ff';
+            textColor = '#1e40af';
+            borderColor = '#3b82f6';
+            displayText = 'NSP';
+            break;
+          case 'DD':
+            bgColor = '#fff7ed';
+            textColor = '#c2410c';
+            borderColor = '#f97316';
+            displayText = 'DD';
+            break;
+          case 'UDTNP':
+            bgColor = '#fef2f2';
+            textColor = '#991b1b';
+            borderColor = '#ef4444';
+            displayText = 'UDTNP';
+            break;
+        }
+        
+        return (
+          <div
+            style={{
+              backgroundColor: bgColor,
+              color: textColor,
+              border: `1px solid ${borderColor}`,
+              borderRadius: '16px',
+              padding: '4px 12px',
+              fontSize: '0.7rem',
+              fontWeight: '500',
+              display: 'inline-block',
+              minWidth: '60px',
+              height: '24px',
+              lineHeight: '16px',
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+              verticalAlign: 'middle'
+            }}
+          >
+            {displayText}
+          </div>
+        );
+      }
+    },
+    { 
+      field: 'edBrojBrojMernogUredjaja', 
+      headerName: 'ед број', 
+      width: 120,
+      renderHeader: () => renderSimpleHeader('ед број')
+    },
+    { 
+      field: 'potrosnjaIPovrsinaCombined', 
+      headerName: 'потрошња и површина', 
+      width: 200,
+      renderHeader: () => renderSimpleHeader('потрошња и површина')
+    },
+    { 
+      field: 'iznosUmanjenjaSaPdv', 
+      headerName: 'износ умањења са пдв', 
+      width: 180,
+      renderHeader: () => renderSimpleHeader('износ умањења са пдв')
+    },
+    { 
+      field: 'brojRacuna', 
+      headerName: 'број рачуна', 
+      width: 120,
+      renderHeader: () => renderSimpleHeader('број рачуна')
+    },
+    { 
+      field: 'datumIzdavanjaRacuna', 
+      headerName: 'датум издавања рачуна', 
+      width: 180,
+      renderHeader: () => renderSimpleHeader('датум издавања рачуна'),
+      renderCell: (params: GridRenderCellParams) => (
+        params.value ? new Date(params.value).toLocaleDateString('sr-RS') : '-'
+      )
+    },
+    {
+      field: 'datumTrajanjaPrava',
+      headerName: 'датум трајања права',
+      width: 180,
+      renderHeader: () => renderSimpleHeader('датум трајања права'),
+      renderCell: (params: GridRenderCellParams) => (
+        params.value ? new Date(params.value).toLocaleDateString('sr-RS') : '-'
+      )
+    },
+    {
+      field: 'actions',
+      headerName: 'акције',
+      width: 150,
+      sortable: false,
+      filterable: false,
+      headerAlign: 'left',
+      align: 'center',
+      renderCell: (params: GridRenderCellParams) => (
+        <div className="flex items-center justify-center gap-2 h-full w-full">
+          {/* Edit icon */}
+          <button
+            onClick={() => {
+              setEditingUgrozenoLice(params.row);
+              setShowModal(true);
+            }}
+            className="flex items-center justify-center w-8 h-8 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-colors duration-200 cursor-pointer"
+            title="Уреди угрожено лице"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          
+          {/* Delete icon */}
+          <button
+            onClick={async () => {
+              if (confirm('Да ли сте сигурни да желите да обришете ово угрожено лице?')) {
+                try {
+                  await apiService.deleteUgrozenoLice(params.row.ugrozenoLiceId!, token!);
+        fetchUgrozenaLica();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Greška pri brisanju');
+                }
+              }
+            }}
+            className="flex items-center justify-center w-8 h-8 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors duration-200 cursor-pointer"
+            title="Обриши угрожено лице"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      )
+    },
+  ]), [renderSimpleHeader, token]);
 
-  const handleSortByJmbg = () => {
-    const sorted = [...ugrozenaLica].sort((a, b) => {
-      return (a.jmbg || '').localeCompare(b.jmbg || '', 'sr');
-    });
-    setUgrozenaLica(sorted);
+  // Filter states
+  const [filters, setFilters] = useState({
+    redniBroj: '',
+    ime: '',
+    prezime: '',
+    jmbg: '',
+    gradOpstina: '',
+    mesto: '',
+    osnovSticanjaStatusa: '',
+    datumTrajanjaPravaOd: '',  // 🆕 NOVO
+    datumTrajanjaPravaDo: ''   // 🆕 NOVO
+  });
+  
+  // Apply sorting to data (filtering is now done server-side)
+  const filteredData = useMemo(() => {
+    console.log('Applying sorting to data. Total ugrozena lica:', ugrozenaLica.length);
+    
+    // Server-side filtering is now handled in handleFilterSearch
+    // This useMemo only handles sorting
+    const sorted = [...ugrozenaLica];
+
+    // Apply sorting
+    if (sortConfig) {
+      sorted.sort((a, b) => {
+        const aValue = a[sortConfig.field as keyof UgrozenoLiceT1];
+        const bValue = b[sortConfig.field as keyof UgrozenoLiceT1];
+        
+        // Handle null/undefined values
+        if (!aValue && !bValue) return 0;
+        if (!aValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (!bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    console.log('Sorted data length:', sorted.length);
+    return sorted;
+  }, [ugrozenaLica, sortConfig]);
+  
+  // Pagination functions
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPageSize(newPageSize);
+    setCurrentPage(0); // Reset to first page
   };
+  
+  const goToPreviousPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+  
+  const goToNextPage = () => {
+    const maxPage = Math.ceil(filteredData.length / pageSize) - 1;
+    if (currentPage < maxPage) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+  
+  const totalPages = Math.ceil(filteredData.length / pageSize);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('DataGrid debug:', {
+      ugrozenaLicaLength: ugrozenaLica.length,
+      filteredDataLength: filteredData.length,
+      columnsLength: columns.length,
+      loading,
+      error,
+      ugrozenaLicaSample: ugrozenaLica.slice(0, 3).map(u => ({ id: u.ugrozenoLiceId, ime: u.ime, prezime: u.prezime })),
+      filteredDataSample: filteredData.slice(0, 3).map(u => ({ id: u.ugrozenoLiceId, ime: u.ime, prezime: u.prezime }))
+    });
+  }, [ugrozenaLica.length, filteredData.length, columns.length, loading, error, ugrozenaLica, filteredData]);
+
+  if (loading) {
+  return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+          </div>
+    );
+  }
 
   return (
-    <div className="p-8 w-full h-full">
-      {toast && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded shadow-lg text-white font-semibold transition ${toast.type==='success' ? 'bg-green-600' : 'bg-red-600'}`}>{toast.msg}</div>
-      )}
-      {/* Header sa naslovom */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 md:w-16 md:h-16 rounded-lg flex items-center justify-center" style={{backgroundColor: '#3A3CA6'}}>
-            <Image src="/ikoniceSidebar/beleIkonice/ugrozenaLicaBelo.png" alt="Ugrožena lica" width={40} height={40} />
-          </div>
-          <h1 className="text-4xl font-bold ml-2">Ugrožena lica</h1>
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-8">
+            <div className="flex items-center gap-4 mb-2">
+              <div className="w-14 h-14 bg-[#3B82F6] rounded-lg flex items-center justify-center">
+                <img 
+                  src="/ikoniceSidebar/beleIkonice/ugrozenaLicaBelo.png" 
+                  alt="EUK Ugrožena lica" 
+                  className="w-9 h-9"
+                />
+        </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">ЕУК-Т1 Угрожена лица</h1>
+                <p className="text-base text-gray-600">Управљање угроженим лицима за ЕУК-Т1 систем</p>
+      </div>
         </div>
       </div>
-      {/* Tabovi za prikaz */}
-      <div className="flex gap-8 border-b border-gray-200 mb-8 relative">
+
+        {/* Import Progress Modal */}
+        {importProgress.isImporting && (
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" 
+            style={{ pointerEvents: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.preventDefault()}
+          >
+            <div 
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 animate-in fade-in-0 zoom-in-95 duration-300" 
+              style={{ pointerEvents: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  {importProgress.percentage === 100 ? (
+                    <div className="w-8 h-8 text-green-600 text-2xl">✓</div>
+                  ) : (
+                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+          </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">
+              {importProgress.percentage === 100 ? 'Import završen!' : 'Import u toku...'}
+            </h3>
+            <p className="text-gray-600">
+              {importProgress.percentage === 100 
+                ? `Uspešno je importovano ${importProgress.successCount} zapisa!`
+                : 'Molimo sačekajte dok se podaci importuju'
+              }
+            </p>
+        </div>
+              
+              {/* Progress Bar */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-700">Napredak</span>
+                  <span className="text-sm font-bold text-blue-600">{importProgress.percentage}%</span>
+      </div>
+                <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-4 rounded-full transition-all duration-500 ease-out relative"
+                    style={{ width: `${importProgress.percentage}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-50 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600 mb-1">{importProgress.successCount}</div>
+                  <div className="text-sm text-green-700 font-medium">Uspešno</div>
+                </div>
+                <div className="bg-red-50 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-red-600 mb-1">{importProgress.errorCount}</div>
+                  <div className="text-sm text-red-700 font-medium">Greške</div>
+                </div>
+              </div>
+              
+              {/* Batch Info */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-700">Batch</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {importProgress.current} / {importProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-gray-400 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+              
+              {/* Time Info */}
+              <div className="text-center mb-6">
+                <div className="text-sm text-gray-600 mb-1">Procijenjeno vreme</div>
+                <div className="text-lg font-bold text-gray-900">
+                  ~{importProgress.estimatedTime} minuta
+                </div>
+              </div>
+              
+          {/* Cancel/Close Button */}
+          <div className="text-center">
+            {importProgress.percentage === 100 ? (
         <button
-          className={`flex items-center gap-2 px-2 pb-2 font-semibold text-lg transition-colors duration-150 focus:outline-none cursor-pointer ${activeTab === 'tabela' ? 'text-indigo-700' : 'text-gray-800'}`}
-          style={{ position: 'relative' }}
+                onClick={() => {
+                  setCancelImport(false);
+                  setImportProgress({
+                    isImporting: false,
+                    current: 0,
+                    total: 0,
+                    percentage: 0,
+                    estimatedTime: 0,
+                    successCount: 0,
+                    errorCount: 0
+                  });
+                }}
+                className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                Zatvori
+        </button>
+            ) : (
+        <button
+                onClick={() => {
+                  setCancelImport(true);
+                  setImportProgress({
+                    isImporting: false,
+                    current: 0,
+                    total: 0,
+                    percentage: 0,
+                    estimatedTime: 0,
+                    successCount: 0,
+                    errorCount: 0
+                  });
+                }}
+                className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                Prekini import
+        </button>
+            )}
+      </div>
+            </div>
+          </div>
+        )}
+
+          {error && (
+            <ErrorHandler error={error} onRetry={fetchUgrozenaLica} />
+          )}
+
+          {/* Tab Navigation */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center">
+              {/* Left side - Tab navigation */}
+              <div className="flex items-center gap-4">
+        <button
           onClick={() => setActiveTab('tabela')}
-        >
-          <Image src="/ikonice/table.svg" alt="Tabela" width={22} height={22} />
-          Tabela
-          {activeTab === 'tabela' && <span className="absolute left-0 right-0 -bottom-[2px] h-1 bg-indigo-600 rounded-full" />}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 w-[140px] h-[44px] justify-center cursor-pointer ${
+                    activeTab === 'tabela'
+                      ? 'bg-[#3B82F6] text-white shadow-md'
+                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <img 
+                    src={activeTab === 'tabela' ? "/ikoniceSidebar/beleIkonice/tableBelo.svg" : "/ikoniceSidebar/table.svg"} 
+                    alt="Table" 
+                    className="w-6 h-6" 
+                  />
+                  Табела
         </button>
         <button
-          className={`flex items-center gap-2 px-2 pb-2 font-semibold text-lg transition-colors duration-150 focus:outline-none cursor-pointer ${activeTab === 'statistika' ? 'text-indigo-700' : 'text-gray-800'}`}
-          style={{ position: 'relative' }}
           onClick={() => setActiveTab('statistika')}
-        >
-          <Image src="/globe.svg" alt="Statistika" width={22} height={22} />
-          Statistika
-          {activeTab === 'statistika' && <span className="absolute left-0 right-0 -bottom-[2px] h-1 bg-indigo-600 rounded-full" />}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 w-[140px] h-[44px] justify-center cursor-pointer ${
+                    activeTab === 'statistika'
+                      ? 'bg-[#3B82F6] text-white shadow-md'
+                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <svg 
+                    className="!w-6 !h-6" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24" 
+                    width="24" 
+                    height="24"
+                    style={{ width: '24px', height: '24px', minWidth: '24px', minHeight: '24px' }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Статистика
         </button>
       </div>
-      {/* Prikaz tabele ili statistike */}
-      {activeTab === 'tabela' ? (
-        <>
-          {/* Naslov tabele i kontrole */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
-            <div className="flex items-center gap-2">
-              <Image src="/ikonice/table.svg" alt="Tabela" width={28} height={28} />
-              <h2 className="text-3xl font-semibold">Tabela</h2>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 justify-end">
-              {selectedIds.length > 0 && (
-                <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="delete" userId={user?.id}>
-                  <Button variant="destructive" onClick={async () => {
-                    const confirmed = window.confirm('Da li ste sigurni da želite da obrišete izabrana ugrožena lica?');
-                    if (confirmed) {
-                      for (const id of selectedIds) {
-                        await handleDelete(id);
-                      }
-                      setSelectedIds([]);
-                    }
-                  }} className="flex items-center gap-2 order-1 sm:order-none">
-                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><rect x="6" y="7" width="12" height="12" rx="2" stroke="#fff" strokeWidth="2"/><path d="M9 7V5a3 3 0 1 1 6 0v2" stroke="#fff" strokeWidth="2"/></svg>
-                    Obriši ({selectedIds.length})
-                  </Button>
-                </PermissionGuard>
-              )}
-              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id}>
-                <Button onClick={() => setModalOpen(true)} variant="default" className="font-semibold bg-[#3A3CA6] hover:bg-blue-700 active:bg-blue-800 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
-                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
-                    <path stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m7-7H5"/>
-                  </svg>
-                  Novo ugroženo lice
-                </Button>
-              </PermissionGuard>
-              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id}>
-                <Button variant="outline" onClick={() => setExportOpen(true)} className="hover:bg-gray-50 active:bg-gray-100 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">Izvoz</Button>
-              </PermissionGuard>
-              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id}>
-                <div className="relative">
-                  <Button variant="outline" onClick={() => setColumnsOpen(!columnsOpen)} className="flex items-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
-                    <span className="w-5 h-5 inline-block align-middle">
-                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <g id="columns-3-2" transform="translate(-2 -2)">
-                          <path id="secondary" fill="#2ca9bc" d="M4,3H20a1,1,0,0,1,1,1V7H3V4A1,1,0,0,1,4,3Z"/>
-                          <path id="primary" d="M15,7H9V21h6ZM3,7H21M20,21H4a1,1,0,0,1-1-1V4A1,1,0,0,1,4,3Z" fill="none" stroke="#000000" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/>
-                        </g>
-                      </svg>
-                    </span>
-                    Kolone <span className="ml-1 bg-indigo-600 text-white rounded px-2">{visibleColumns.length}</span>
-                  </Button>
-                  {columnsOpen && (
-                    <ColumnsMenu
-                      open={columnsOpen}
-                      onClose={() => setColumnsOpen(false)}
-                      selected={visibleColumns}
-                      onChange={(cols, visible) => {
-                        setColumnOrder(cols);
-                        setVisibleColumns(visible);
+
+              {/* Right side - Action buttons (only show for table tab) */}
+              {activeTab === 'tabela' && (
+                <div className="flex gap-4 items-center">
+                  <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
+                    <button
+                      onClick={() => {
+                        setEditingUgrozenoLice(null);
+                        setShowModal(true);
                       }}
-                    />
+                      className="flex items-center gap-2 px-3 py-1.5 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 text-sm font-medium cursor-pointer"
+                    >
+                      <Add className="w-4 h-4" />
+                      Додај ново угрожено лице
+                    </button>
+              </PermissionGuard>
+                  <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id || undefined}>
+                    <button
+                      onClick={() => setExportDialogOpen(true)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-[#E5E7EB] text-[#1F2937] rounded-md hover:bg-[#D1D5DB] transition-colors duration-200 text-sm font-medium cursor-pointer"
+                    >
+                      <FileDownload className="w-4 h-4" />
+                      Извоз
+                    </button>
+              </PermissionGuard>
+                  <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
+                    <label className="flex items-center gap-2 px-3 py-1.5 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 text-sm font-medium cursor-pointer">
+                      <FileUpload className="w-4 h-4" />
+                      Увоз
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            // Show modal IMMEDIATELY before calling handleImport
+                            console.log('Setting modal to show before handleImport');
+                            setImportProgress({
+                              isImporting: true,
+                              current: 0,
+                              total: 1,
+                              percentage: 0,
+                              estimatedTime: 0,
+                              successCount: 0,
+                              errorCount: 0
+                            });
+                            
+                            // Force UI update
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            console.log('Modal should be visible now');
+                            
+                            // Then call handleImport
+                            handleImport(file);
+                            e.target.value = ''; // Reset input
+                          }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </PermissionGuard>
+                  
+                  
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-[#E5E7EB] text-[#1F2937] rounded-md hover:bg-[#D1D5DB] transition-colors duration-200 text-sm font-medium cursor-pointer"
+                  >
+                    Филтери
+                  </button>
+                </div>
                   )}
                 </div>
-              </PermissionGuard>
-              <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id}>
-                <Button variant="outline" onClick={() => setFilterOpen(true)} className="hover:bg-gray-50 active:bg-gray-100 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">Filteri</Button>
-              </PermissionGuard>
             </div>
+
+          {/* Tab Content */}
+      {activeTab === 'tabela' ? (
+        <>
+              {/* Table Container with Horizontal Scroll */}
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                {/* Filters Section */}
+                {showFilters && (
+                  <div className="p-6 border-b border-gray-200 bg-gray-50">
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-900">Филтери и претрага</h4>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Филтери претражују целу базу података. Сви подаци се учитавају аутоматски.
+                        </p>
           </div>
-          {/* Sadržaj tabele */}
-          <div className="overflow-x-auto w-full">
-            <UgrozenaLicaTable
-              ugrozenaLica={ugrozenaLica}
-              visibleColumns={visibleColumns}
-              columnOrder={columnOrder}
-              onOrderChange={setColumnOrder}
-              selectedIds={selectedIds}
-              onSelect={handleSelect}
-              onSelectAll={handleSelectAll}
-              allSelected={selectedIds.length === ugrozenaLica.length && ugrozenaLica.length > 0}
-              loading={loading}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onSortByName={handleSortByName}
-              onSortByDatumRodjenja={handleSortByDatumRodjenja}
-              onSortByJmbg={handleSortByJmbg}
-              columnsOpen={columnsOpen}
-              filterOpen={filterOpen}
+                      
+                      {/* Filter Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {/* Redni broj */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Редни број</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по редном броју..."
+                            value={filters.redniBroj}
+                            onChange={(e) => setFilters(prev => ({ ...prev, redniBroj: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
             />
           </div>
-          {/* Pagination i ukupno stavki prikazujem samo ovde */}
-          <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span>Broj redova:</span>
+
+                        {/* Ime */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Име</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по имену..."
+                            value={filters.ime}
+                            onChange={(e) => setFilters(prev => ({ ...prev, ime: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                          />
+            </div>
+
+                        {/* Prezime */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Презиме</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по презимену..."
+                            value={filters.prezime}
+                            onChange={(e) => setFilters(prev => ({ ...prev, prezime: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                          />
+          </div>
+
+                        {/* JMBG */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">ЈМБГ</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по ЈМБГ-у..."
+                            value={filters.jmbg}
+                            onChange={(e) => setFilters(prev => ({ ...prev, jmbg: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+            />
+          </div>
+
+                        {/* Grad/Opština */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Град/Општина</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по граду/општини..."
+                            value={filters.gradOpstina}
+                            onChange={(e) => setFilters(prev => ({ ...prev, gradOpstina: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                          />
+                        </div>
+
+                        {/* Mesto */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Место</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по месту..."
+                            value={filters.mesto}
+                            onChange={(e) => setFilters(prev => ({ ...prev, mesto: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+            />
+          </div>
+
+                        {/* Osnov sticanja statusa */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Основ стицања статуса</label>
               <select
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400"
-                value={rowsPerPage}
-                onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
-              >
-                {[5, 10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                            value={filters.osnovSticanjaStatusa}
+                            onChange={(e) => setFilters(prev => ({ ...prev, osnovSticanjaStatusa: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+                          >
+                            <option value="">Сви основи</option>
+                            <option value="MP">MP</option>
+                            <option value="NSP">NSP</option>
+                            <option value="DD">DD</option>
+                            <option value="UDTNP">UDTNP</option>
               </select>
             </div>
-            <div className="text-sm text-gray-600">
-              Ukupno stavki: <span className="font-medium">{totalElements}</span>
+
+                        {/* Datum trajanja prava - OD */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Датум трајања права - ОД</label>
+                          <input
+                            type="date"
+                            value={filters.datumTrajanjaPravaOd}
+                            onChange={(e) => setFilters(prev => ({ ...prev, datumTrajanjaPravaOd: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                          />
             </div>
-            <div className="flex items-center gap-1">
-              <button className="border border-gray-300 rounded px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer" onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}>Prethodna</button>
-              <button className="border border-blue-500 bg-blue-500 text-white rounded px-3 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">{page + 1}</button>
-              <button className="border border-gray-300 rounded px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer" onClick={() => setPage(p => Math.min(totalPages - 1, p+1))} disabled={page === totalPages - 1}>Sledeća</button>
+
+                        {/* Datum trajanja prava - DO */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Датум трајања права - ДО</label>
+                          <input
+                            type="date"
+                            value={filters.datumTrajanjaPravaDo}
+                            onChange={(e) => setFilters(prev => ({ ...prev, datumTrajanjaPravaDo: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                            min={filters.datumTrajanjaPravaOd || new Date().toISOString().split('T')[0]}
+                          />
             </div>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-col gap-2">
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Акције</label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setFilters({
+                                redniBroj: '',
+                                ime: '',
+                                prezime: '',
+                                jmbg: '',
+                                gradOpstina: '',
+                                mesto: '',
+                                osnovSticanjaStatusa: '',
+                                datumTrajanjaPravaOd: '',
+                                datumTrajanjaPravaDo: ''
+                              })}
+                              className="flex-1 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-200 font-medium cursor-pointer text-sm"
+                            >
+                              Очисти
+                            </button>
+                            <button
+                              onClick={handleFilterSearch}
+                              className="flex-1 px-3 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] transition-all duration-200 font-medium cursor-pointer text-sm"
+                              title="Претражи целу базу података"
+                            >
+                              Претражи базу ({filteredData.length})
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* DataGrid Table */}
+                <Paper sx={{ height: 600, width: '100%' }}>
+                  <DataGrid
+                    rows={filteredData}
+                    columns={columns}
+                    getRowId={(row) => row.ugrozenoLiceId || Math.random()}
+                    paginationModel={{ page: currentPage, pageSize: pageSize }}
+                    onPaginationModelChange={(model) => {
+                      setCurrentPage(model.page);
+                      setPageSize(model.pageSize);
+                    }}
+                    pageSizeOptions={[10, 25, 50, 100]}
+                    checkboxSelection
+                    disableRowSelectionOnClick
+                    disableColumnMenu
+                    disableColumnSorting
+                    sx={{ 
+                      border: 0,
+                      '& .MuiDataGrid-cell': {
+                        display: 'flex',
+                        alignItems: 'center'
+                      },
+                      '& .MuiDataGrid-columnHeader': {
+                        '& .MuiDataGrid-menuIcon': {
+                          display: 'none'
+                        },
+                        '& .MuiDataGrid-sortIcon': {
+                          display: 'none'
+                        },
+                        '& .MuiDataGrid-columnMenuIcon': {
+                          display: 'none'
+                        },
+                        '& .MuiDataGrid-iconButtonContainer': {
+                          display: 'none'
+                        },
+                        '& .MuiDataGrid-sortIconContainer': {
+                          display: 'none'
+                        },
+                        '& .MuiDataGrid-iconButton': {
+                          display: 'none'
+                        }
+                      }
+                    }}
+                    slots={{
+                      footer: () => (
+                        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-6">
+                              <span className="text-sm text-gray-600">
+                                Укупно: <span className="font-semibold text-gray-800">{ugrozenaLica.length}</span> угрожених лица
+                              </span>
+                              {filteredData.length !== ugrozenaLica.length && (
+                                <span className="text-sm text-gray-600">
+                                  Филтрирано: <span className="font-semibold text-gray-800">{filteredData.length}</span>
+                                </span>
+                              )}
+                              {Object.values(filters).some(value => value && value.toString().trim() !== '') && (
+                                <span className="text-sm text-blue-600">
+                                  Активни филтери (цела база): <span className="font-semibold">{Object.values(filters).filter(v => v && v.toString().trim() !== '').length}</span>
+                                </span>
+                              )}
+                              <button
+                                onClick={handleRefresh}
+                                disabled={refreshing}
+                                className="flex items-center gap-2 px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Освежи податке"
+                              >
+                                <svg className={`w-3 h-3 text-gray-600 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                {refreshing ? 'Освежавам...' : 'Освежи'}
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              {/* Pagination Info */}
+                              <div className="flex items-center gap-3 text-sm text-gray-600">
+                                <span>Прикажи:</span>
+                                <select 
+                                  value={pageSize}
+                                  className="px-2 py-1 border border-gray-300 rounded text-xs bg-white cursor-pointer"
+                                  onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
+                                >
+                                  <option value={10}>10</option>
+                                  <option value={25}>25</option>
+                                  <option value={50}>50</option>
+                                  <option value={100}>100</option>
+                                </select>
+                                <span>по страници</span>
+                              </div>
+                              
+                              {/* Page Navigation */}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={goToPreviousPage}
+                                  disabled={currentPage === 0}
+                                  className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                  </svg>
+                                </button>
+                                <span className="px-3 py-1 text-xs bg-white border border-gray-300 rounded">
+                                  Страница {currentPage + 1} од {totalPages}
+                                </span>
+                                <button
+                                  onClick={goToNextPage}
+                                  disabled={currentPage >= totalPages - 1}
+                                  className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </button>
+                              </div>
+            </div>
+            </div>
+                        </div>
+                      )
+                    }}
+                  />
+                </Paper>
           </div>
         </>
       ) : (
         <UgrozenaLicaStatistika ugrozenaLica={ugrozenaLica} />
       )}
-      {/* Modali i ostalo ostaje isto */}
-      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} defaultColumns={visibleColumns} />
-      {modalOpen && (
-        <NovoUgrozenoLiceModal open={modalOpen} onClose={() => setModalOpen(false)} onAdd={handleAdd} />
-      )}
-      {editModalOpen && editingUgrozenoLice && (
-        <UrediUgrozenoLiceModal
-          open={editModalOpen}
-          ugrozenoLice={editingUgrozenoLice}
-          onClose={() => { setEditModalOpen(false); setEditingUgrozenoLice(null); }}
-          onSave={handleUpdate}
-        />
-      )}
 
-      {filterOpen && (
-        <UgrozenaLicaFilter
-          open={filterOpen}
-          onClose={() => setFilterOpen(false)}
-          onFilter={setFilterValues}
-          initialValues={filterValues}
-        />
-      )}
+          {/* New UgrozenoLice Modal */}
+          <NovoUgrozenoLiceModal
+            isOpen={showModal}
+            onClose={() => {
+              setShowModal(false);
+              setEditingUgrozenoLice(null);
+            }}
+            onSuccess={handleModalSuccess}
+            editingUgrozenoLice={editingUgrozenoLice}
+            token={token!}
+          />
+
+          <ExportDialog
+            open={exportDialogOpen}
+            onClose={() => setExportDialogOpen(false)}
+            columns={columns
+              .filter(col => col.field !== 'actions' && col.field !== 'datumTrajanjaPrava') // Uklanjamo actions i datumTrajanjaPrava kolone iz izvoza, datumIzdavanjaRacuna ostaje
+              .map(col => ({ accessorKey: col.field, header: col.headerName || col.field }))}
+            data={filteredData as unknown as Record<string, unknown>[]}
+            onExport={handleExport}
+          />
     </div>
+    </div>
+    </>
   );
 } 

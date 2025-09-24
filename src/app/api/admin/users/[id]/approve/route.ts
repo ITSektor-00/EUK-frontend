@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function PUT(
+export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -11,8 +11,8 @@ export async function PUT(
       ? 'http://localhost:8080' 
       : 'https://euk.onrender.com';
 
-    const response = await fetch(`${backendUrl}/api/users/${userId}/approve`, {
-      method: 'PUT',
+    const response = await fetch(`${backendUrl}/api/admin/users/${userId}/approve`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': request.headers.get('authorization') || ''

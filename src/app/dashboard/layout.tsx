@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
+import { UserOnlyGuard } from '../../components/RoleBasedGuards';
 import SidebarNav from '../SidebarNav';
 import Navbar from '../Navbar';
 import { ThemeProvider } from '../ThemeContext';
@@ -18,15 +19,16 @@ export default function DashboardLayout({
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  useEffect(() => {
-    // Ako je admin, preusmeri na admin dashboard
-    if (!loading && isAdmin) {
-      router.push('/admin');
-    }
-  }, [isAdmin, loading, router]);
+  // Middleware sada radi rutiranje na osnovu role
+  // useEffect(() => {
+  //   if (!loading && isAdmin) {
+  //     router.replace('/admin');
+  //   }
+  // }, [isAdmin, loading, router]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
+    router.push('/login');
   };
 
   // Ako je admin, ne prikazuj ovaj layout
@@ -36,9 +38,10 @@ export default function DashboardLayout({
 
   return (
     <ProtectedRoute>
-      <ThemeProvider>
-        <ClientLayoutShell>
-          <div className="flex h-screen bg-gray-100">
+      <UserOnlyGuard>
+        <ThemeProvider>
+          <ClientLayoutShell>
+            <div className="flex h-screen bg-gray-100">
             {/* Navbar - fiksiran na vrhu */}
             <div className="fixed top-0 left-0 right-0 z-40">
               <Navbar 
@@ -64,8 +67,9 @@ export default function DashboardLayout({
               </main>
             </div>
           </div>
-        </ClientLayoutShell>
-      </ThemeProvider>
+          </ClientLayoutShell>
+        </ThemeProvider>
+      </UserOnlyGuard>
     </ProtectedRoute>
   );
 }

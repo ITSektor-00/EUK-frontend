@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     const page = searchParams.get('page') || '0';
     const size = searchParams.get('size') || '10';
     
-    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica?page=${page}&size=${size}`, {
+    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica-t1?page=${page}&size=${size}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica`, {
+    const response = await fetch(`${SPRING_BASE_URL}/api/euk/ugrozena-lica-t1`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

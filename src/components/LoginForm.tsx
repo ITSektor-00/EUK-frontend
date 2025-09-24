@@ -33,9 +33,10 @@ const LoginForm: React.FC = () => {
         return; // Ne ide dalje, samo prikazuje pop-up
       }
       
-      // Posle uspešnog logina, preusmeri na odgovarajući dashboard
-      // Auth context će se ažurirati, a useEffect u layout-u će preusmeriti korisnika
-      router.push('/dashboard');
+      // Posle uspešnog logina, preusmeri na home page
+      // Auth context će se ažurirati, a useEffect u page.tsx će preusmeriti korisnika
+      // na osnovu role (admin -> /admin, obični korisnik -> /dashboard)
+      router.push('/');
     } catch (error: unknown) {
       // Poboljšana obrada grešaka
       let errorMessage = 'Greška pri prijavi';
