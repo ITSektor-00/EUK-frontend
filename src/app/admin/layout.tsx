@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import SidebarNav from '../SidebarNav';
-import Navbar from '../Navbar';
+import AdminNavbar from '../components/AdminNavbar';
 import AdminNotifications from './korisnici/AdminNotifications';
 import { ThemeProvider } from '../ThemeContext';
 import ClientLayoutShell from '../ClientLayoutShell';
@@ -51,7 +51,7 @@ export default function AdminLayout({
           <div className="flex h-screen bg-gray-100">
             {/* Navbar - fiksiran na vrhu */}
             <div className="fixed top-0 left-0 right-0 z-40">
-              <Navbar 
+              <AdminNavbar 
                 user={user}
                 onLogout={handleLogout}
               />
