@@ -4,8 +4,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    console.log('Signin request body:', body);
-    console.log('Sending to backend:', JSON.stringify(body));
     
     const backendUrl = process.env.NODE_ENV === 'development' 
       ? 'http://localhost:8080' 

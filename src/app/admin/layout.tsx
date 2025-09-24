@@ -19,10 +19,6 @@ export default function AdminLayout({
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  console.log('=== ADMIN LAYOUT DEBUG ===');
-  console.log('User:', user);
-  console.log('IsAdmin:', isAdmin);
-  console.log('Loading:', loading);
 
   // Middleware sada radi rutiranje na osnovu role
   // useEffect(() => {

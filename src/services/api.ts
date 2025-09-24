@@ -151,16 +151,6 @@ class ApiService {
           errorData = { error: 'Response is not JSON', parseError: parseError };
         }
         
-        // Log detailed error information for debugging (only for non-500 errors)
-        if (response.status !== 500) {
-          console.error('API Error Details:', {
-            url,
-            status: response.status,
-            statusText: response.statusText,
-            errorData,
-            headers: Object.fromEntries(response.headers.entries())
-          });
-        }
         
         // Handle specific HTTP status codes
         if (response.status === 401) {
@@ -647,12 +637,8 @@ class ApiService {
         throw new Error('Token je obavezan i ne može biti prazan');
       }
 
-      // Koristi cache ako je dostupan
-      const cacheKey = this.getCacheKey('/api/auth/me', { token: token.substring(0, 10) });
-      const cached = this.getFromCache(cacheKey);
-      if (cached) {
-        return cached;
-      }
+      // Očisti sve cache-ove pre fetch-a
+      this.clearAllCache();
 
       const response = await fetch(`${this.baseURL}/api/auth/me`, {
         method: 'GET',
@@ -677,9 +663,6 @@ class ApiService {
       if (!userData || typeof userData !== 'object') {
         throw new Error('Neispravan odgovor od servera');
       }
-
-      // Sačuvaj u cache na 2 minuta
-      this.setCache(cacheKey, userData, 120000);
 
       return userData;
     } catch (error) {
@@ -1062,7 +1045,6 @@ class ApiService {
         nivoPristupa: Number(nivoPristupa)
       };
 
-      console.log('Updating user level with data:', { userId, ...requestBody });
 
       return await this.apiCall(`/api/admin/users/${userId}/level`, {
         method: 'PUT',
@@ -1070,8 +1052,15 @@ class ApiService {
         body: JSON.stringify(requestBody)
       }, token, 3, false, 0); // 3 retries, no cache
     } catch (error) {
-      console.error('Error updating user level:', error);
-      throw error; // Ne simuliraj uspeh, baci grešku
+      throw error;
+    }
+  }
+
+  private clearAllCache(): void {
+    // Očisti sve cache-ove
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      sessionStorage.clear();
     }
   }
 }

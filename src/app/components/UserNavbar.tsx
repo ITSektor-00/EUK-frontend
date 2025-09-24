@@ -94,7 +94,6 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
   const { user: contextUser, loading } = useUser();
   const { token } = useAuth();
   
-  console.log('UserNavbar token:', token); // Debug log
   
   // Koristi prop user ako je prosleđen, inače koristi iz context-a
   const user = propUser || contextUser;
@@ -352,7 +351,6 @@ function ProfileModal({ user, onClose }: { user: UserData | User | null | undefi
     
     // Uzmi token iz localStorage-a direktno
     const token = localStorage.getItem('token');
-    console.log('handleSubmit - token:', token); // Debug log
     
     // Proveri da li je token istekao
     if (token) {
@@ -361,7 +359,6 @@ function ProfileModal({ user, onClose }: { user: UserData | User | null | undefi
         const expiry = payload.exp * 1000; // konvertuj u milisekunde
         
         if (Date.now() >= expiry) {
-          console.log('Token je istekao!');
           localStorage.removeItem('token');
           setError('Token je istekao. Molimo prijavite se ponovo.');
           setLoading(false)

@@ -128,6 +128,8 @@ export const UserOnlyGuard: React.FC<{ children: React.ReactNode; fallback?: Rea
   children, 
   fallback 
 }) => {
+  const { user, loading } = useAuth();
+  
   return (
     <RoleGuard allowedRoles={['korisnik', 'KORISNIK', 'user', 'USER']} fallback={fallback}>
       {children}

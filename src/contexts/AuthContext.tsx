@@ -52,43 +52,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
       }
 
-      // Proveri cache prvo
-      const cacheKey = `user_${token.substring(0, 20)}`;
-      const cachedUser = localStorage.getItem(cacheKey);
-      if (cachedUser) {
-        try {
-          const parsedUser = JSON.parse(cachedUser);
-          // Proveri da li je cache stariji od 5 minuta
-          if (Date.now() - parsedUser.timestamp < 300000) {
-            setUser(parsedUser.data);
-            setLoading(false);
-            return;
-          }
-        } catch (e) {
-          // Ako cache nije validan, obriši ga
-          localStorage.removeItem(cacheKey);
+      // Uvek čitaj fresh user podatke - ne koristi cache
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('user_')) {
+          localStorage.removeItem(key);
         }
-      }
+      });
       
       const userData = await apiService.getCurrentUser(token);
       setUser(userData);
-      
-      // Sačuvaj u cache
-      localStorage.setItem(cacheKey, JSON.stringify({
-        data: userData,
-        timestamp: Date.now()
-      }));
     } catch (error) {
-      console.error('Error loading user:', error);
-      
       // Proveri da li je greška vezana za autentifikaciju
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('401') || errorMessage.includes('sesija') || errorMessage.includes('token')) {
-        console.warn('Token je istekao ili je nevažeći, brišem sesiju');
         logout();
-      } else {
-        // Za ostale greške, samo loguj bez brisanja sesije
-        console.warn('Greška pri učitavanju korisnika, ali zadržavam sesiju:', errorMessage);
       }
     } finally {
       setLoading(false);
@@ -98,6 +76,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Proveri localStorage i cookies tek nakon mount-a i pratiti promene
   useEffect(() => {
     const checkToken = () => {
+      // Očisti sve user cache-ove na početku
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('user_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
       // Prvo proveri localStorage
       const storedToken = localStorage.getItem('token');
       
@@ -118,7 +104,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (storedToken !== token) {
         setToken(storedToken);
-        // ChatGPT rešenje - sinhronizuj sa cookies
+        // Sinhronizuj sa cookies
         if (storedToken && typeof document !== 'undefined') {
           document.cookie = `token=${storedToken}; path=/; max-age=${7 * 24 * 60 * 60}`;
         }
@@ -142,7 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       setLoading(false);
     }
-  }, [token]); // Uklonjen loadUser iz dependency array-a
+  }, [token, loadUser]);
 
   const login = async (credentials: { usernameOrEmail: string; password: string }) => {
     try {
@@ -177,14 +163,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       // Client-side redirekcija na osnovu role
-      console.log('=== CLIENT-SIDE REDIRECT ===');
-      console.log('User role:', response.role);
       setTimeout(() => {
         if (response.role === 'admin' || response.role === 'ADMIN') {
-          console.log('Redirecting admin to /admin');
-          router.push('/admin');
+          router.push('/admin/dashboard');
         } else if (response.role === 'korisnik' || response.role === 'USER' || response.role === 'KORISNIK') {
-          console.log('Redirecting user to /dashboard');
           router.push('/dashboard');
         }
       }, 100);
@@ -193,8 +175,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Ne preusmeravaj ovde - neka middleware hendluje redirekciju
       // Middleware će preusmeriti korisnika na osnovu role kada pristupi home page-u
     } catch (error) {
-      console.error('Login error:', error);
-      setLoading(false); // Postavi loading na false i u slučaju greške
+      setLoading(false);
       throw error;
     }
   };
@@ -244,20 +225,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }, 100);
     } catch (error) {
-      console.error('Registration error:', error);
       throw error;
     }
   };
 
   const logout = async () => {
-    console.log('=== LOGOUT START ===');
-    console.log('Current token:', token);
-    console.log('Current user:', user);
-    
     try {
       // Pozovi backend API za odjavu
       if (token) {
-        console.log('Calling logout API with token:', token.substring(0, 20) + '...');
         await fetch('/api/odjava', { 
           method: 'POST', 
           headers: {
@@ -265,24 +240,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             'Content-Type': 'application/json'
           }
         });
-        console.log('Logout API call completed');
       }
     } catch (error) {
-      console.error('Error during logout API call:', error);
       // Nastavi sa odjavom čak i ako API poziv ne uspe
     } finally {
-      console.log('Clearing local state...');
       // Uvek obriši lokalne podatke
       setToken(null);
       setUser(null);
       if (typeof window !== 'undefined') {
-        // ChatGPT rešenje - obriši token iz localStorage
         localStorage.removeItem('token');
-        console.log('Removed token from localStorage');
-        
-        // ChatGPT rešenje - obriši token iz cookies sa Max-Age=0
         document.cookie = "token=; Max-Age=0; path=/";
-        console.log('Removed token from cookies with Max-Age=0');
         
         // Obriši user cache
         const keys = Object.keys(localStorage);
@@ -291,9 +258,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             localStorage.removeItem(key);
           }
         });
-        console.log('Cleared user cache');
+        
+        // Očisti sve cache-ove
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Očisti service worker cache (ako postoji)
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (const name of names) caches.delete(name);
+          });
+        }
       }
-      console.log('=== LOGOUT END ===');
     }
   };
 
@@ -316,7 +292,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout,
       updateToken,
       isAuthenticated: !!token,
-      isAdmin: user?.role === 'admin' || user?.role === 'ADMIN',
+      isAdmin: (() => {
+        if (!user || typeof user !== 'object') {
+          return false;
+        }
+        
+        const userRole = user.role;
+        return userRole === 'admin' || userRole === 'ADMIN';
+      })(),
       isApproved: user?.isApproved || false,
       needsApproval: user ? !user.isApproved : false,
       nivoPristupa: user?.nivoPristupa || 1

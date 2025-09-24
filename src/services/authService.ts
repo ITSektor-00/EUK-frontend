@@ -77,7 +77,6 @@ class ApiService {
       }
       
       const data = await response.json();
-      console.log('Registration successful:', data);
       return data;
     } catch (error) {
       console.error('Registration error:', error);
@@ -102,7 +101,6 @@ class ApiService {
       }
       
       const data = await response.json();
-      console.log('Sign in successful:', data);
       return data;
     } catch (error) {
       console.error('SignIn Exception:', error);
@@ -136,7 +134,6 @@ class ApiService {
         throw new Error('Greška pri testiranju hello endpoint-a');
       }
       const data = await response.text();
-      console.log('Hello test:', data);
       return data;
     } catch (error) {
       console.error('Hello test error:', error);
@@ -151,7 +148,6 @@ class ApiService {
         throw new Error('Greška pri testiranju status endpoint-a');
       }
       const data = await response.text();
-      console.log('Status test:', data);
       return data;
     } catch (error) {
       console.error('Status test error:', error);
@@ -172,7 +168,6 @@ class ApiService {
       }
       
       const data = await response.text();
-      console.log('Echo test:', data);
       return data;
     } catch (error) {
       console.error('Echo test error:', error);
@@ -188,7 +183,6 @@ class ApiService {
         throw new Error('Greška pri testiranju CORS endpoint-a');
       }
       const data = await response.json();
-      console.log('CORS test:', data);
       return data;
     } catch (error) {
       console.error('CORS test error:', error);

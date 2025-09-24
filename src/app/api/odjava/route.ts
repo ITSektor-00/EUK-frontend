@@ -5,7 +5,6 @@ export async function POST(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     
     if (authHeader) {
-      console.log('Logout request with token:', authHeader.substring(0, 20) + '...');
       
       // Pozovi backend API za odjavu
       const backendUrl = process.env.NODE_ENV === 'development' 

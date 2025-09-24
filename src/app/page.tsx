@@ -18,7 +18,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!loading && isAuthenticated) {
       if (isAdmin) {
-        router.push('/admin');
+        router.push('/admin/dashboard');
       } else {
         router.push('/dashboard');
       }

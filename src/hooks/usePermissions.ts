@@ -75,14 +75,12 @@ export const usePermissions = (userId?: number) => {
         // Proveri cache prvo
         const cachedPermissions = getCachedPermissions(targetUserId);
         if (cachedPermissions) {
-          console.log('Using cached permissions for user:', targetUserId);
           setPermissions(cachedPermissions);
           setLoading(false);
           return;
         }
 
         // Generiši role-based permissions
-        console.log('Generating role-based permissions for user:', targetUserId);
         
         const userRole = user.role?.toLowerCase();
         const roleBasedPermissions: UserPermissions = {
