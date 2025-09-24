@@ -116,10 +116,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (storedToken !== token) {
         setToken(storedToken);
-        // Sinhronizuj sa cookies - uvek ažuriraj cookies sa najnovijim token-om
+        // ChatGPT rešenje - sinhronizuj sa cookies
         if (storedToken && typeof document !== 'undefined') {
-          const isSecure = window.location.protocol === 'https:';
-          document.cookie = `token=${storedToken}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
+          document.cookie = `token=${storedToken}; path=/; max-age=${7 * 24 * 60 * 60}`;
         }
       }
     };
@@ -238,9 +237,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    console.log('=== LOGOUT START ===');
+    console.log('Current token:', token);
+    console.log('Current user:', user);
+    
     try {
       // Pozovi backend API za odjavu
       if (token) {
+        console.log('Calling logout API with token:', token.substring(0, 20) + '...');
         await fetch('/api/odjava', { 
           method: 'POST', 
           headers: {
@@ -248,19 +252,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             'Content-Type': 'application/json'
           }
         });
+        console.log('Logout API call completed');
       }
     } catch (error) {
       console.error('Error during logout API call:', error);
       // Nastavi sa odjavom čak i ako API poziv ne uspe
     } finally {
+      console.log('Clearing local state...');
       // Uvek obriši lokalne podatke
       setToken(null);
       setUser(null);
       if (typeof window !== 'undefined') {
+        // ChatGPT rešenje - obriši token iz localStorage
         localStorage.removeItem('token');
-        // Obriši token iz cookies - koristi iste parametre kao pri postavljanju
-        const isSecure = window.location.protocol === 'https:';
-        document.cookie = `token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; ${isSecure ? 'secure;' : ''} samesite=strict`;
+        console.log('Removed token from localStorage');
+        
+        // ChatGPT rešenje - obriši token iz cookies sa Max-Age=0
+        document.cookie = "token=; Max-Age=0; path=/";
+        console.log('Removed token from cookies with Max-Age=0');
+        
         // Obriši user cache
         const keys = Object.keys(localStorage);
         keys.forEach(key => {
@@ -268,7 +278,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             localStorage.removeItem(key);
           }
         });
+        console.log('Cleared user cache');
       }
+      console.log('=== LOGOUT END ===');
     }
   };
 
@@ -276,9 +288,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setToken(newToken);
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', newToken);
-      // Ažuriraj token u cookies - koristi iste parametre kao pri postavljanju
-      const isSecure = window.location.protocol === 'https:';
-      document.cookie = `token=${newToken}; path=/; max-age=${7 * 24 * 60 * 60}; ${isSecure ? 'secure;' : ''} samesite=strict`;
+      // ChatGPT rešenje - postavi token u cookies
+      document.cookie = `token=${newToken}; path=/; max-age=${7 * 24 * 60 * 60}`;
     }
   };
 

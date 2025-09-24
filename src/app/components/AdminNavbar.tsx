@@ -169,7 +169,7 @@ export default function AdminNavbar({ user: propUser, onLogout }: AdminNavbarPro
   
   if (loading) {
     return (
-      <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#88EBA7' }}>
+      <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#2D5A3D' }}>
         <div className="flex items-center gap-2 select-none">
           <div className="w-9 h-9 bg-gray-300 rounded animate-pulse"></div>
           <span className="hidden sm:inline font-semibold text-xl tracking-wide text-white">ЕУК Платформа - Admin</span>
@@ -191,7 +191,7 @@ export default function AdminNavbar({ user: propUser, onLogout }: AdminNavbarPro
   }
 
   return (
-    <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#88EBA7' }}>
+    <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#2D5A3D' }}>
       {/* Leva strana: logo i naziv */}
       <div className="flex items-center gap-2 select-none">
         <Link href="/admin" className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-200">
