@@ -150,6 +150,8 @@ async function handleRoleBasedRouting(request: NextRequest): Promise<NextRespons
 }
 
 export async function middleware(request: NextRequest) {
+  console.log('Middleware called for:', request.nextUrl.pathname);
+  
   // Dodaj CORS headere za sve zahteve
   const response = NextResponse.next()
 
