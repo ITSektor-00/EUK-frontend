@@ -14,16 +14,16 @@ export default function HomePage() {
   const { isAuthenticated, isAdmin, loading, user } = useAuth();
 
 
-  // Middleware sada radi rutiranje na osnovu role
-  // useEffect(() => {
-  //   if (!loading && isAuthenticated) {
-  //     if (isAdmin) {
-  //       router.push('/admin');
-  //     } else {
-  //       router.push('/dashboard');
-  //     }
-  //   }
-  // }, [isAuthenticated, isAdmin, loading, router]);
+  // Client-side redirekcija kao fallback ako middleware ne radi
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      if (isAdmin) {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
+    }
+  }, [isAuthenticated, isAdmin, loading, router]);
 
   // Ako je admin, koristi optimizovanu komponentu
   if (loading && isAdmin) {
