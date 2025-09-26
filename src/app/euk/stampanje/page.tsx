@@ -95,7 +95,6 @@ export default function StampanjePage() {
     setError(null);
     
     try {
-      console.log('Fetching all ugrozena lica from database...');
       
       // Učitaj sve podatke kroz više stranica da pokrijemo celu bazu
       let allUgrozenaLica: UgrozenoLiceT1[] = [];
@@ -107,7 +106,6 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        console.log(`Fetching page ${currentPage}...`);
         const res = await fetch(`/api/euk/ugrozena-lica?${params.toString()}`);
         
         if (!res.ok) {
@@ -130,7 +128,6 @@ export default function StampanjePage() {
         }
       }
       
-      console.log(`Fetched ${allUgrozenaLica.length} total records from ${currentPage} pages`);
       setUgrozenaLica(allUgrozenaLica);
     } catch (err) {
       console.error('Error fetching ugrozena lica:', err);
@@ -146,7 +143,6 @@ export default function StampanjePage() {
     setError(null);
     
     try {
-      console.log('Fetching all ugrozena lica T2 from database...');
       
       // Učitaj sve podatke kroz više stranica da pokrijemo celu bazu
       let allUgrozenaLicaT2: UgrozenoLiceT2[] = [];
@@ -158,7 +154,6 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        console.log(`Fetching T2 page ${currentPage}...`);
         const data = await apiService.getUgrozenaLicaT2(params.toString(), token!);
         const pageData = data.content || data;
         
@@ -175,7 +170,6 @@ export default function StampanjePage() {
         }
       }
       
-      console.log(`Fetched ${allUgrozenaLicaT2.length} total T2 records from ${currentPage} pages`);
       setUgrozenaLicaT2(allUgrozenaLicaT2);
     } catch (err) {
       console.error('Error fetching ugrozena lica T2:', err);

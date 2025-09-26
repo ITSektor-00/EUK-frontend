@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useUser } from "../ThemeContext";
 import { useAuth } from "../../contexts/AuthContext";
 import NotificationBell from "./NotificationBell";
+import LicenseNotification from "../../components/LicenseNotification";
 
 type User = {
   id: number;
@@ -217,6 +218,11 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
       
       {/* Desna strana: notifikacije i profil dugme */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Licencno obaveštenje */}
+        <div className="hidden md:block mr-1">
+          <LicenseNotification />
+        </div>
+        
         {/* Notifikacije za korisnike */}
         <div className="hidden md:block mr-1">
           <NotificationBell />

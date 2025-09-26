@@ -11,17 +11,19 @@ interface Predmet {
   rokZaZavrsetak: string;
   kategorijaId: number;
   kategorijaNaziv?: string;
-  brojUgrozenihLica?: number;
+  kategorijaSkracenica?: string;
   datumKreiranja?: string;
   kategorija?: {
     kategorijaId: number;
     naziv: string;
+    skracenica: string;
   };
 }
 
 interface Kategorija {
   kategorijaId: number;
   naziv: string;
+  skracenica: string;
 }
 
 interface PredmetiStatistikaProps {

@@ -11,6 +11,7 @@ import {
   Radio,
 } from '@mui/material';
 import { FileDownload, PictureAsPdf, TableChart } from '@mui/icons-material';
+import { GridRowSelectionModel } from '@mui/x-data-grid';
 
 interface Column {
   accessorKey: string;
@@ -22,10 +23,11 @@ interface ExportDialogProps {
   onClose: () => void;
   columns: Column[];
   data: Record<string, unknown>[];
+  selectedRows?: GridRowSelectionModel;
   onExport: (selectedColumns: string[], format: string, data: Record<string, unknown>[]) => void;
 }
 
-export default function ExportDialog({ open, onClose, columns, data, onExport }: ExportDialogProps) {
+export default function ExportDialog({ open, onClose, columns, data, selectedRows, onExport }: ExportDialogProps) {
   const [selectedColumns, setSelectedColumns] = useState<string[]>(columns.map(col => col.accessorKey));
   const [format, setFormat] = useState('csv');
 
@@ -50,7 +52,17 @@ export default function ExportDialog({ open, onClose, columns, data, onExport }:
       alert('Молимо изаберите бар једну колону за извоз');
       return;
     }
-    onExport(selectedColumns, format, data);
+    
+    // Filter data to only include selected rows if any are selected
+    let exportData = data;
+    if (selectedRows && selectedRows.length > 0) {
+      exportData = data.filter(item => {
+        const itemId = (item as any).ugrozenoLiceId || (item as any).predmetId || (item as any).kategorijaId;
+        return selectedRows.includes(itemId);
+      });
+    }
+    
+    onExport(selectedColumns, format, exportData);
     onClose();
   };
 
@@ -173,6 +185,11 @@ export default function ExportDialog({ open, onClose, columns, data, onExport }:
               <Typography variant="body2" color="text.secondary">
                 Изабрано колона: {selectedColumns.length} од {columns.length}
               </Typography>
+              {selectedRows && selectedRows.length > 0 && (
+                <Typography variant="body2" color="primary" sx={{ ml: 2 }}>
+                  • Означено редова: {selectedRows.length}
+                </Typography>
+              )}
             </Box>
           </Box>
         </div>

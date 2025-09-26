@@ -28,6 +28,12 @@ import ExportDialog from '../../components/ExportDialog';
 
 import { UgrozenoLiceT1, UgrozenoLiceFormData, UgrozenoLiceResponse } from './types';
 
+interface Kategorija {
+  kategorijaId: number;
+  naziv: string;
+  skracenica: string;
+}
+
 const csvConfig = mkConfig({
   fieldSeparator: ',',
   decimalSeparator: '.',
@@ -38,6 +44,7 @@ export default function UgrozenaLicaPage() {
   const router = useRouter();
   const { token, user } = useAuth();
   const [ugrozenaLica, setUgrozenaLica] = useState<UgrozenoLiceT1[]>([]);
+  const [kategorije, setKategorije] = useState<Kategorija[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,17 +59,6 @@ export default function UgrozenaLicaPage() {
   });
   const [cancelImport, setCancelImport] = useState(false);
   
-  // Debug import progress state
-  useEffect(() => {
-    console.log('Import progress state changed:', importProgress);
-    console.log('Modal should be visible:', importProgress.isImporting);
-    console.log('Current state:', {
-      isImporting: importProgress.isImporting,
-      current: importProgress.current,
-      total: importProgress.total,
-      percentage: importProgress.percentage
-    });
-  }, [importProgress]);
 
   // Poll batch progress function
   const pollBatchProgress = async (batchId: string, batchNumber: number, totalBatches: number) => {
@@ -142,10 +138,39 @@ export default function UgrozenaLicaPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
+  // State za custom selekciju
+  const [customSelectedIds, setCustomSelectedIds] = useState<Set<number>>(new Set());
+  
+  // Toggle funkcija za selekciju
+  const toggleRowSelection = (id: number) => {
+    setCustomSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all / Deselect all
+  const toggleSelectAll = () => {
+    if (customSelectedIds.size > 0) {
+      setCustomSelectedIds(new Set());
+    } else {
+      const allIds = new Set(filteredData.map(row => row.ugrozenoLiceId).filter((id): id is number => Boolean(id)));
+      setCustomSelectedIds(allIds);
+    }
+  };
+
   // Funkcija za refresh podataka
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchUgrozenaLica();
+    await Promise.all([
+      fetchUgrozenaLica(),
+      fetchKategorije()
+    ]);
     setRefreshing(false);
   };
 
@@ -154,7 +179,6 @@ export default function UgrozenaLicaPage() {
     setError(null);
     
     try {
-      console.log('Fetching all ugrozena lica from database...');
       
       // Učitaj sve podatke kroz više stranica da pokrijemo celu bazu
       let allUgrozenaLica: UgrozenoLiceT1[] = [];
@@ -166,7 +190,6 @@ export default function UgrozenaLicaPage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        console.log(`Fetching page ${currentPage}...`);
         const data = await apiService.getUgrozenaLica(params.toString(), token!);
         const pageData = data.content || data;
         
@@ -183,7 +206,6 @@ export default function UgrozenaLicaPage() {
         }
       }
       
-      console.log(`Fetched ${allUgrozenaLica.length} total records from ${currentPage} pages`);
       setUgrozenaLica(allUgrozenaLica);
     } catch (err) {
       console.error('Error fetching ugrozena lica:', err);
@@ -240,10 +262,20 @@ export default function UgrozenaLicaPage() {
     }
   };
 
+  const fetchKategorije = async () => {
+    try {
+      const data = await apiService.getKategorije('', token!);
+      setKategorije(data);
+    } catch (err) {
+      console.error('Greška pri učitavanju kategorija:', err);
+    }
+  };
+
   // Load data when token is available - JEDNOM PRI UČITAVANJU STRANICE
   useEffect(() => {
     if (token) {
       fetchUgrozenaLica();
+      fetchKategorije();
     }
   }, [token]); // Prazan dependency array - učitava se samo jednom
 
@@ -278,7 +310,13 @@ export default function UgrozenaLicaPage() {
   }, [token]);
 
   const handleModalSuccess = () => {
-        fetchUgrozenaLica();
+    fetchUgrozenaLica();
+  };
+
+  // Funkcija za dobijanje naziva kategorije po skraćenici
+  const getKategorijaNaziv = (skracenica: string) => {
+    const kategorija = kategorije.find(k => k.skracenica === skracenica);
+    return kategorija ? `${kategorija.skracenica} - ${kategorija.naziv}` : skracenica;
   };
 
   // Funkcija za slanje poruka preko WebSocket-a
@@ -441,13 +479,10 @@ export default function UgrozenaLicaPage() {
         errorCount: 0
       });
       
-      console.log('Cancel import state:', cancelImport);
-      console.log('Progress state set to:', { isImporting: true, current: 0, total: totalBatches });
       
       // Force UI update to show modal IMMEDIATELY
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      console.log('Modal should be visible now:', importProgress.isImporting);
       
       // Import data to backend using batch processing
       let successCount = 0;
@@ -712,8 +747,8 @@ export default function UgrozenaLicaPage() {
           
           // Prepare data for insertion - EXACTLY like your Python example
           // Each row is one "kupac" - Redosled je: A - O kolona (15 vrednosti)
-          // Use ALL data, not just filteredData (which might be paginated)
-          const dataToAdd = ugrozenaLica.map(item => [
+          // Use filtered data from ExportDialog (only selected rows)
+          const dataToAdd = data.map(item => [
             item.ugrozenoLiceId || '',           // A: ID
             item.redniBroj || '',                // B: Redni broj
             item.ime || '',                      // C: Ime
@@ -1023,44 +1058,14 @@ export default function UgrozenaLicaPage() {
       renderHeader: () => renderSimpleHeader('основ стицања'),
       renderCell: (params: GridRenderCellParams) => {
         const osnov = params.value;
-        let bgColor = '#f3f4f6';
-        let textColor = '#374151';
-        let borderColor = '#d1d5db';
-        let displayText = osnov;
-        
-        switch (osnov) {
-          case 'MP':
-            bgColor = '#ecfdf5';
-            textColor = '#065f46';
-            borderColor = '#10b981';
-            displayText = 'MP';
-            break;
-          case 'NSP':
-            bgColor = '#eff6ff';
-            textColor = '#1e40af';
-            borderColor = '#3b82f6';
-            displayText = 'NSP';
-            break;
-          case 'DD':
-            bgColor = '#fff7ed';
-            textColor = '#c2410c';
-            borderColor = '#f97316';
-            displayText = 'DD';
-            break;
-          case 'UDTNP':
-            bgColor = '#fef2f2';
-            textColor = '#991b1b';
-            borderColor = '#ef4444';
-            displayText = 'UDTNP';
-            break;
-        }
+        const kategorijaNaziv = getKategorijaNaziv(osnov);
         
         return (
           <div
             style={{
-              backgroundColor: bgColor,
-              color: textColor,
-              border: `1px solid ${borderColor}`,
+              backgroundColor: '#f3f4f6',
+              color: '#374151',
+              border: '1px solid #d1d5db',
               borderRadius: '16px',
               padding: '4px 12px',
               fontSize: '0.7rem',
@@ -1074,8 +1079,9 @@ export default function UgrozenaLicaPage() {
               boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
               verticalAlign: 'middle'
             }}
+            title={kategorijaNaziv}
           >
-            {displayText}
+            {osnov}
           </div>
         );
       }
@@ -1185,7 +1191,6 @@ export default function UgrozenaLicaPage() {
   
   // Apply sorting to data (filtering is now done server-side)
   const filteredData = useMemo(() => {
-    console.log('Applying sorting to data. Total ugrozena lica:', ugrozenaLica.length);
     
     // Server-side filtering is now handled in handleFilterSearch
     // This useMemo only handles sorting
@@ -1212,9 +1217,40 @@ export default function UgrozenaLicaPage() {
       });
     }
 
-    console.log('Sorted data length:', sorted.length);
     return sorted;
   }, [ugrozenaLica, sortConfig]);
+
+  // Dodaj custom checkbox kolonu na početak
+  const columnsWithSelection: GridColDef[] = useMemo(() => [
+    {
+      field: 'customSelect',
+      headerName: '',
+      name: 'customSelect',
+      width: 50,
+      sortable: false,
+      filterable: false,
+      renderHeader: () => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.size > 0 && customSelectedIds.size === filteredData.length}
+          ref={checkbox => {
+            if (checkbox) checkbox.indeterminate = customSelectedIds.size > 0 && customSelectedIds.size < filteredData.length;
+          }}
+          onChange={toggleSelectAll}
+          className="cursor-pointer"
+        />
+      ),
+      renderCell: (params: GridRenderCellParams) => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.has(params.row.ugrozenoLiceId)}
+          onChange={() => toggleRowSelection(params.row.ugrozenoLiceId)}
+          className="cursor-pointer"
+        />
+      ),
+    },
+    ...columns
+  ], [customSelectedIds, filteredData.length, toggleSelectAll, toggleRowSelection, columns]);
   
   // Pagination functions
   const handlePageSizeChange = (newPageSize: number) => {
@@ -1237,18 +1273,6 @@ export default function UgrozenaLicaPage() {
   
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('DataGrid debug:', {
-      ugrozenaLicaLength: ugrozenaLica.length,
-      filteredDataLength: filteredData.length,
-      columnsLength: columns.length,
-      loading,
-      error,
-      ugrozenaLicaSample: ugrozenaLica.slice(0, 3).map(u => ({ id: u.ugrozenoLiceId, ime: u.ime, prezime: u.prezime })),
-      filteredDataSample: filteredData.slice(0, 3).map(u => ({ id: u.ugrozenoLiceId, ime: u.ime, prezime: u.prezime }))
-    });
-  }, [ugrozenaLica.length, filteredData.length, columns.length, loading, error, ugrozenaLica, filteredData]);
 
   if (loading) {
   return (
@@ -1477,6 +1501,15 @@ export default function UgrozenaLicaPage() {
                       <FileDownload className="w-4 h-4" />
                       Извоз
                     </button>
+                    {customSelectedIds.size > 0 && (
+                      <button
+                        onClick={() => setExportDialogOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200 text-sm font-medium cursor-pointer shadow-md"
+                      >
+                        <FileDownload className="w-4 h-4" />
+                        Извоз означених ({customSelectedIds.size})
+                      </button>
+                    )}
               </PermissionGuard>
                   <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
                     <label className="flex items-center gap-2 px-3 py-1.5 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 text-sm font-medium cursor-pointer">
@@ -1489,7 +1522,6 @@ export default function UgrozenaLicaPage() {
                           const file = e.target.files?.[0];
                           if (file) {
                             // Show modal IMMEDIATELY before calling handleImport
-                            console.log('Setting modal to show before handleImport');
                             setImportProgress({
                               isImporting: true,
                               current: 0,
@@ -1625,10 +1657,11 @@ export default function UgrozenaLicaPage() {
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
                           >
                             <option value="">Сви основи</option>
-                            <option value="MP">MP</option>
-                            <option value="NSP">NSP</option>
-                            <option value="DD">DD</option>
-                            <option value="UDTNP">UDTNP</option>
+                            {kategorije.map(kat => (
+                              <option key={kat.kategorijaId} value={kat.skracenica}>
+                                {kat.skracenica} - {kat.naziv}
+                              </option>
+                            ))}
               </select>
             </div>
 
@@ -1693,7 +1726,7 @@ export default function UgrozenaLicaPage() {
                 <Paper sx={{ height: 600, width: '100%' }}>
                   <DataGrid
                     rows={filteredData}
-                    columns={columns}
+                    columns={columnsWithSelection}
                     getRowId={(row) => row.ugrozenoLiceId || Math.random()}
                     paginationModel={{ page: currentPage, pageSize: pageSize }}
                     onPaginationModelChange={(model) => {
@@ -1701,7 +1734,6 @@ export default function UgrozenaLicaPage() {
                       setPageSize(model.pageSize);
                     }}
                     pageSizeOptions={[10, 25, 50, 100]}
-                    checkboxSelection
                     disableRowSelectionOnClick
                     disableColumnMenu
                     disableColumnSorting
@@ -1743,6 +1775,11 @@ export default function UgrozenaLicaPage() {
                               {filteredData.length !== ugrozenaLica.length && (
                                 <span className="text-sm text-gray-600">
                                   Филтрирано: <span className="font-semibold text-gray-800">{filteredData.length}</span>
+                                </span>
+                              )}
+                              {customSelectedIds.size > 0 && (
+                                <span className="text-sm text-blue-600">
+                                  Означено: <span className="font-semibold text-blue-800">{customSelectedIds.size}</span> за извоз
                                 </span>
                               )}
                               {Object.values(filters).some(value => value && value.toString().trim() !== '') && (
@@ -1836,6 +1873,7 @@ export default function UgrozenaLicaPage() {
               .filter(col => col.field !== 'actions' && col.field !== 'datumTrajanjaPrava') // Uklanjamo actions i datumTrajanjaPrava kolone iz izvoza, datumIzdavanjaRacuna ostaje
               .map(col => ({ accessorKey: col.field, header: col.headerName || col.field }))}
             data={filteredData as unknown as Record<string, unknown>[]}
+            selectedRows={Array.from(customSelectedIds) as any}
             onExport={handleExport}
           />
     </div>

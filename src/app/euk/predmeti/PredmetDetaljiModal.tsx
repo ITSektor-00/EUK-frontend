@@ -11,7 +11,6 @@ interface Predmet {
   rokZaZavrsetak: string;
   kategorijaId: number;
   kategorijaNaziv?: string;
-  brojUgrozenihLica?: number;
   datumKreiranja?: string;
   kategorija?: {
     kategorijaId: number;
@@ -180,12 +179,6 @@ export default function PredmetDetaljiModal({
                   {predmet.rokZaZavrsetak ? new Date(predmet.rokZaZavrsetak).toLocaleDateString('sr-RS') : 'Непознато'}
                 </p>
               </div>
-              {predmet.brojUgrozenihLica && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2">Број угрожених лица</label>
-                  <p className="text-lg text-gray-900">{predmet.brojUgrozenihLica}</p>
-                </div>
-              )}
             </div>
           </div>
 

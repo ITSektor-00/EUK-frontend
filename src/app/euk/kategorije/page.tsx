@@ -57,6 +57,32 @@ export default function KategorijePage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
+  // State za custom selekciju
+  const [customSelectedIds, setCustomSelectedIds] = useState<Set<number>>(new Set());
+  
+  // Toggle funkcija za selekciju
+  const toggleRowSelection = (id: number) => {
+    setCustomSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all / Deselect all
+  const toggleSelectAll = () => {
+    if (customSelectedIds.size > 0) {
+      setCustomSelectedIds(new Set());
+    } else {
+      const allIds = new Set(filteredData.map(row => row.kategorijaId).filter((id): id is number => Boolean(id)));
+      setCustomSelectedIds(allIds);
+    }
+  };
+
   // Funkcija za refresh podataka
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -69,7 +95,6 @@ export default function KategorijePage() {
     setError(null);
 
     try {
-      console.log('Fetching all kategorije from database...');
 
       // Učitaj sve podatke kroz više stranica da pokrijemo celu bazu
       let allKategorije: KategorijaT1[] = [];
@@ -81,7 +106,6 @@ export default function KategorijePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
 
-        console.log(`Fetching page ${currentPage}...`);
         const data = await apiService.getKategorije(params.toString(), token!);
         const pageData = data.content || data;
 
@@ -98,7 +122,6 @@ export default function KategorijePage() {
         }
       }
 
-      console.log(`Fetched ${allKategorije.length} total records from ${currentPage} pages`);
       setKategorije(allKategorije);
     } catch (err) {
       console.error('Error fetching kategorije:', err);
@@ -108,43 +131,10 @@ export default function KategorijePage() {
     }
   };
 
-  // Filter pretraga - koristi server-side pretragu kroz celu bazu
+  // Filter pretraga - koristi klijentsku stranu filtriranje kao u predmetima
   const handleFilterSearch = async () => {
-    if (!token) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Proveri da li ima bilo koji filter
-      const hasFilters = Object.values(filters).some(value => value && value.toString().trim() !== '');
-
-      if (!hasFilters) {
-        // Ako nema filtera, učitaj sve podatke iz baze
-        await fetchKategorije(false);
-        return;
-      }
-
-      // Pripremi filtere za server - pretražuje celu bazu, ne samo trenutnu stranicu
-      const serverFilters: Record<string, unknown> = {};
-
-      // Dodaj samo ne-prazne filtere - server će pretražiti celu bazu
-      if (filters.naziv.trim()) serverFilters.naziv = filters.naziv.trim();
-
-      console.log('Sending filters to server for full database search:', serverFilters);
-
-      // Koristi napredni filter endpoint za server-side pretragu kroz celu bazu
-      const searchResults = await apiService.searchKategorijeByFilters(serverFilters, token);
-      const kategorijeData = searchResults.content || searchResults;
-      setKategorije(kategorijeData);
-
-      console.log('Server returned:', kategorijeData.length, 'results from full database search');
-    } catch (err) {
-      console.error('Error in filter search:', err);
-      setError(err instanceof Error ? err.message : 'Greška pri pretrazi');
-    } finally {
-      setLoading(false);
-    }
+    // Filtriranje se radi automatski kroz useMemo, samo osveži podatke
+    await fetchKategorije(false);
   };
 
   // Load data when token is available - JEDNOM PRI UČITAVANJU STRANICE
@@ -158,27 +148,22 @@ export default function KategorijePage() {
   useEffect(() => {
     if (!token) return;
 
-    console.log('Subscribing to WebSocket updates for kategorije...');
 
     // Subscribe na kategorije updates
     webSocketService.subscribeToKategorijeUpdates((data) => {
-      console.log('Kategorije update received:', data);
 
       // Handle different types of updates
       if (data.type === 'kategorija_updated' || data.type === 'kategorija_created' || data.type === 'kategorija_deleted') {
-        console.log('Refreshing kategorije data due to WebSocket update');
         fetchKategorije(false); // Don't show loading spinner for background updates
       }
     });
 
     // Subscribe na general messages
     webSocketService.subscribeToGeneralMessages((data) => {
-      console.log('General message received:', data);
     });
 
     // Cleanup na unmount - ne zatvaramo konekciju jer je shared service
     return () => {
-      console.log('Unsubscribing from WebSocket updates');
       webSocketService.unsubscribe('/topic/kategorije');
       webSocketService.unsubscribe('/topic/messages');
     };
@@ -260,7 +245,7 @@ export default function KategorijePage() {
       // Extract data using openpyxl-style approach
       const importData: any[] = [];
       const columns = [
-        'kategorijaId', 'naziv'
+        'kategorijaId', 'naziv', 'skracenica'
       ];
 
       // Iterate through all rows (openpyxl style)
@@ -295,7 +280,7 @@ export default function KategorijePage() {
           }
         }
 
-        // Extract data from A-B columns (2 columns) - openpyxl style
+        // Extract data from A-C columns (3 columns) - openpyxl style
         for (let col = 0; col < columns.length; col++) {
           const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
           const cell = worksheet[cellAddress];
@@ -307,7 +292,7 @@ export default function KategorijePage() {
         }
 
         // Only add if we have essential data
-        if (rowData.naziv) {
+        if (rowData.naziv && rowData.skracenica) {
           importData.push(rowData);
         }
       }
@@ -351,9 +336,13 @@ export default function KategorijePage() {
             if (!item.naziv) {
               throw new Error('Nedostaje naziv kategorije');
             }
+            if (!item.skracenica) {
+              throw new Error('Nedostaje skraćenica kategorije');
+            }
 
             return {
-              naziv: (item.naziv || '').toString()
+              naziv: (item.naziv || '').toString(),
+              skracenica: (item.skracenica || '').toString().toUpperCase()
             };
           });
 
@@ -439,7 +428,7 @@ export default function KategorijePage() {
 
     switch (format) {
       case 'csv':
-        const csv = generateCsv(csvConfig)(filteredData as Record<string, string | number>[]);
+        const csv = generateCsv(csvConfig)(data as Record<string, string | number>[]);
         download(csvConfig)(csv);
         break;
       case 'excel':
@@ -448,7 +437,7 @@ export default function KategorijePage() {
 
           // Create a new workbook
           const workbook = XLSX.utils.book_new();
-          const worksheet = XLSX.utils.json_to_sheet(filteredData);
+          const worksheet = XLSX.utils.json_to_sheet(data);
           
           // Set column widths
           const columnWidths = selectedColumns.map(col => ({ wch: Math.max(col.length, 15) }));
@@ -456,9 +445,9 @@ export default function KategorijePage() {
           
           XLSX.utils.book_append_sheet(workbook, worksheet, 'Kategorije');
           
-          // Generate filename
-          let filename = 'ЕУК-Категорије';
-          filename += '.xlsx';
+           // Generate filename
+           let filename = 'ЕУК-Категорије-(Основи-стицања-статуса)';
+           filename += '.xlsx';
 
           XLSX.writeFile(workbook, filename);
           console.log(`Excel file saved: ${filename} with ${filteredData.length} rows`);
@@ -475,9 +464,9 @@ export default function KategorijePage() {
           format: 'a4'
         });
 
-        // Add title
-        pdf.setFontSize(16);
-        pdf.text('ЕУК-Категорије', 14, 20);
+         // Add title
+         pdf.setFontSize(16);
+         pdf.text('ЕУК-Категорије (Основи стицања статуса)', 14, 20);
 
         // Prepare table data
         const tableData = filteredData.map(item =>
@@ -491,6 +480,7 @@ export default function KategorijePage() {
             const headerMap: Record<string, string> = {
               'kategorijaId': 'ID',
               'naziv': 'Назив',
+              'skracenica': 'Скраћеница',
             };
             return headerMap[col] || col;
           })],
@@ -510,9 +500,9 @@ export default function KategorijePage() {
           },
         });
 
-        // Generate filename
-        const pdfFilename = 'ЕУК-Категорије.pdf';
-        pdf.save(pdfFilename);
+         // Generate filename
+         const pdfFilename = 'ЕУК-Категорије-(Основи-стицања-статуса).pdf';
+         pdf.save(pdfFilename);
         break;
       default:
         console.log('Unknown format:', format);
@@ -531,6 +521,12 @@ export default function KategorijePage() {
       headerName: 'назив',
       width: 300,
       renderHeader: () => renderSimpleHeader('назив')
+    },
+    {
+      field: 'skracenica',
+      headerName: 'скраћеница',
+      width: 150,
+      renderHeader: () => renderSimpleHeader('скраћеница')
     },
     {
       field: 'actions',
@@ -582,20 +578,21 @@ export default function KategorijePage() {
 
   // Filter states
   const [filters, setFilters] = useState({
-    naziv: ''
+    naziv: '',
+    skracenica: ''
   });
 
-  // Apply sorting to data (filtering is now done server-side)
+  // Apply filters and sorting to data (klijentska strana filtriranje kao u predmetima)
   const filteredData = useMemo(() => {
-    console.log('Applying sorting to data. Total kategorije:', kategorije.length);
-
-    // Server-side filtering is now handled in handleFilterSearch
-    // This useMemo only handles sorting
-    const sorted = [...kategorije];
+    const filtered = kategorije.filter(kategorija => {
+      if (filters.naziv && !kategorija.naziv.toLowerCase().includes(filters.naziv.toLowerCase())) return false;
+      if (filters.skracenica && !kategorija.skracenica.toLowerCase().includes(filters.skracenica.toLowerCase())) return false;
+      return true;
+    });
 
     // Apply sorting
     if (sortConfig) {
-      sorted.sort((a, b) => {
+      filtered.sort((a, b) => {
         const aValue = a[sortConfig.field as keyof KategorijaT1];
         const bValue = b[sortConfig.field as keyof KategorijaT1];
 
@@ -614,9 +611,41 @@ export default function KategorijePage() {
       });
     }
 
-    console.log('Sorted data length:', sorted.length);
-    return sorted;
-  }, [kategorije, sortConfig]);
+    console.log('Filtered data length:', filtered.length);
+    return filtered;
+  }, [kategorije, filters, sortConfig]);
+
+  // Dodaj custom checkbox kolonu na početak
+  const columnsWithSelection: GridColDef[] = useMemo(() => [
+    {
+      field: 'customSelect',
+      headerName: '',
+      name: 'customSelect',
+      width: 50,
+      sortable: false,
+      filterable: false,
+      renderHeader: () => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.size > 0 && customSelectedIds.size === filteredData.length}
+          ref={checkbox => {
+            if (checkbox) checkbox.indeterminate = customSelectedIds.size > 0 && customSelectedIds.size < filteredData.length;
+          }}
+          onChange={toggleSelectAll}
+          className="cursor-pointer"
+        />
+      ),
+      renderCell: (params: GridRenderCellParams) => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.has(params.row.kategorijaId)}
+          onChange={() => toggleRowSelection(params.row.kategorijaId)}
+          className="cursor-pointer"
+        />
+      ),
+    },
+    ...columns
+  ], [customSelectedIds, filteredData.length, toggleSelectAll, toggleRowSelection, columns]);
 
   // Pagination functions
   const handlePageSizeChange = (newPageSize: number) => {
@@ -639,18 +668,6 @@ export default function KategorijePage() {
 
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('DataGrid debug:', {
-      kategorijeLength: kategorije.length,
-      filteredDataLength: filteredData.length,
-      columnsLength: columns.length,
-      loading,
-      error,
-      kategorijeSample: kategorije.slice(0, 3).map(u => ({ id: u.kategorijaId, naziv: u.naziv })),
-      filteredDataSample: filteredData.slice(0, 3).map(u => ({ id: u.kategorijaId, naziv: u.naziv }))
-    });
-  }, [kategorije.length, filteredData.length, columns.length, loading, error, kategorije, filteredData]);
 
   if (loading) {
     return (
@@ -674,8 +691,8 @@ export default function KategorijePage() {
                 />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">ЕУК Категорије</h1>
-                <p className="text-base text-gray-600">Управљање категоријама за ЕУК систем</p>
+                 <h1 className="text-3xl font-bold text-gray-900">ЕУК Категорије (Основи стицања статуса)</h1>
+                 <p className="text-base text-gray-600">Управљање категоријама за ЕУК систем</p>
               </div>
             </div>
           </div>
@@ -750,6 +767,15 @@ export default function KategorijePage() {
                       <FileDownload className="w-4 h-4" />
                       Извоз
                     </button>
+                    {customSelectedIds.size > 0 && (
+                      <button
+                        onClick={() => setExportDialogOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200 text-sm font-medium cursor-pointer shadow-md"
+                      >
+                        <FileDownload className="w-4 h-4" />
+                        Извоз означених ({customSelectedIds.size})
+                      </button>
+                    )}
                   </PermissionGuard>
                   <PermissionGuard routeName="/euk/kategorije" requiredPermission="write" userId={user?.id || undefined}>
                     <label className="flex items-center gap-2 px-3 py-1.5 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 text-sm font-medium cursor-pointer">
@@ -793,7 +819,7 @@ export default function KategorijePage() {
                       <div>
                         <h4 className="text-lg font-semibold text-gray-900">Филтери и претрага</h4>
                         <p className="text-sm text-gray-600 mt-1">
-                          Филтери претражују целу базу података. Сви подаци се учитавају аутоматски.
+                          Филтери раде у реалном времену. Сви подаци се учитавају аутоматски.
                         </p>
                       </div>
 
@@ -811,13 +837,26 @@ export default function KategorijePage() {
                           />
                         </div>
 
+                        {/* Skracenica */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Скраћеница</label>
+                          <input
+                            type="text"
+                            placeholder="Претражи по скраћеници..."
+                            value={filters.skracenica}
+                            onChange={(e) => setFilters(prev => ({ ...prev, skracenica: e.target.value.toUpperCase() }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                          />
+                        </div>
+
                         {/* Action buttons */}
                         <div className="flex flex-col gap-2">
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Акције</label>
                           <div className="flex gap-2">
                             <button
                               onClick={() => setFilters({
-                                naziv: ''
+                                naziv: '',
+                                skracenica: ''
                               })}
                               className="flex-1 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-200 font-medium cursor-pointer text-sm"
                             >
@@ -826,9 +865,9 @@ export default function KategorijePage() {
                             <button
                               onClick={handleFilterSearch}
                               className="flex-1 px-3 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-[#2563EB] transition-all duration-200 font-medium cursor-pointer text-sm"
-                              title="Претражи целу базу података"
+                              title="Освежи податке"
                             >
-                              Претражи базу ({filteredData.length})
+                              Освежи ({filteredData.length})
                             </button>
                           </div>
                         </div>
@@ -841,7 +880,7 @@ export default function KategorijePage() {
                 <Paper sx={{ height: 600, width: '100%' }}>
                   <DataGrid
                     rows={filteredData}
-                    columns={columns}
+                    columns={columnsWithSelection}
                     getRowId={(row) => row.kategorijaId || Math.random()}
                     paginationModel={{ page: currentPage, pageSize: pageSize }}
                     onPaginationModelChange={(model) => {
@@ -849,7 +888,6 @@ export default function KategorijePage() {
                       setPageSize(model.pageSize);
                     }}
                     pageSizeOptions={[10, 25, 50, 100]}
-                    checkboxSelection
                     disableRowSelectionOnClick
                     disableColumnMenu
                     disableColumnSorting
@@ -893,9 +931,14 @@ export default function KategorijePage() {
                                   Филтрирано: <span className="font-semibold text-gray-800">{filteredData.length}</span>
                                 </span>
                               )}
+                              {customSelectedIds.size > 0 && (
+                                <span className="text-sm text-blue-600">
+                                  Означено: <span className="font-semibold text-blue-800">{customSelectedIds.size}</span> за извоз
+                                </span>
+                              )}
                               {Object.values(filters).some(value => value !== undefined && value !== null && value.toString().trim() !== '') && (
                                 <span className="text-sm text-blue-600">
-                                  Активни филтери (цела база): <span className="font-semibold">{Object.values(filters).filter(v => v !== undefined && v !== null && v.toString().trim() !== '').length}</span>
+                                  Активни филтери: <span className="font-semibold">{Object.values(filters).filter(v => v !== undefined && v !== null && v.toString().trim() !== '').length}</span>
                                 </span>
                               )}
                               <button
@@ -984,6 +1027,7 @@ export default function KategorijePage() {
               .filter(col => col.field !== 'actions') // Uklanjamo actions kolonu iz izvoza
               .map(col => ({ accessorKey: col.field, header: col.headerName || col.field }))}
             data={filteredData as unknown as Record<string, unknown>[]}
+            selectedRows={Array.from(customSelectedIds) as any}
             onExport={handleExport}
           />
         </div>

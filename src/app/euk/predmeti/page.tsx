@@ -35,17 +35,19 @@ interface Predmet {
   rokZaZavrsetak: string;
   kategorijaId: number;
   kategorijaNaziv?: string;
-  brojUgrozenihLica?: number;
+  kategorijaSkracenica?: string;
   datumKreiranja?: string;
   kategorija?: {
     kategorijaId: number;
     naziv: string;
+    skracenica: string;
   };
 }
 
 interface Kategorija {
   kategorijaId: number;
   naziv: string;
+  skracenica: string;
 }
 
 const statusOptions = ['активан', 'затворен', 'на_чекању', 'у_обради'];
@@ -87,6 +89,32 @@ export default function PredmetiPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
+  // State za custom selekciju
+  const [customSelectedIds, setCustomSelectedIds] = useState<Set<number>>(new Set());
+  
+  // Toggle funkcija za selekciju
+  const toggleRowSelection = (id: number) => {
+    setCustomSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all / Deselect all
+  const toggleSelectAll = () => {
+    if (customSelectedIds.size > 0) {
+      setCustomSelectedIds(new Set());
+    } else {
+      const allIds = new Set(filteredData.map(row => row.predmetId).filter((id): id is number => Boolean(id)));
+      setCustomSelectedIds(allIds);
+    }
+  };
+
   // Funkcija za refresh podataka
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -105,15 +133,12 @@ export default function PredmetiPage() {
     setError(null);
     
     try {
-      console.log('Fetching predmeti...');
       const params = new URLSearchParams();
       // Dodajemo parametre za veliku stranicu da dobijemo sve predmete
       params.append('size', '1000'); // Velika veličina stranice
       params.append('page', '0');    // Prva stranica
       const data = await apiService.getPredmeti(params.toString(), token!);
-      console.log('Received data:', data);
       const predmetiData = data.content || data;
-      console.log('Setting predmeti:', predmetiData);
       setPredmeti(predmetiData);
     } catch (err) {
       console.error('Error fetching predmeti:', err);
@@ -291,13 +316,13 @@ export default function PredmetiPage() {
 
     switch (format) {
       case 'csv':
-        const csv = generateCsv(csvConfig)(filteredData as Record<string, string | number>[]);
+        const csv = generateCsv(csvConfig)(data as Record<string, string | number>[]);
         download(csvConfig)(csv);
         break;
       case 'excel':
         // Create Excel workbook
         const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.json_to_sheet(filteredData);
+          const worksheet = XLSX.utils.json_to_sheet(data);
         
         // Set column widths
         const columnWidths = selectedColumns.map(col => ({ wch: Math.max(col.length, 15) }));
@@ -334,7 +359,7 @@ export default function PredmetiPage() {
               'prioritet': 'Prioritet',
               'odgovornaOsoba': 'Odgovorna osoba',
               'rokZaZavrsetak': 'Rok za zavrsetak',
-              'kategorijaId': 'Kategorija'
+              'kategorijaSkracenica': 'Kategorija'
             };
             return headerMap[col] || col;
           })],
@@ -512,15 +537,25 @@ export default function PredmetiPage() {
         params.value ? new Date(params.value).toLocaleDateString('sr-RS') : '-'
       )
     },
-                                                                       { 
-         field: 'kategorijaId', 
-         headerName: 'категорија', 
-         width: 200,
-         renderHeader: () => renderSimpleHeader('категорија'),
-       renderCell: (params: GridRenderCellParams) => (
-         getKategorijaNaziv(params.value)
-       )
-     },
+    { 
+      field: 'kategorijaSkracenica', 
+      headerName: 'категорија', 
+      width: 150,
+      renderHeader: () => renderSimpleHeader('категорија'),
+      renderCell: (params: GridRenderCellParams) => {
+        const kategorijaSkracenica = params.value;
+        
+        if (kategorijaSkracenica) {
+          return (
+            <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
+              {kategorijaSkracenica}
+            </span>
+          );
+        }
+        
+        return <span className="text-sm text-gray-500">-</span>;
+      }
+    },
                        {
               field: 'actions',
               headerName: 'акције',
@@ -567,18 +602,17 @@ export default function PredmetiPage() {
     status: '',
     prioritet: '',
     odgovornaOsoba: '',
-    kategorijaId: ''
+    kategorijaSkracenica: ''
   });
   
   // Apply filters and sorting to data
   const filteredData = useMemo(() => {
-    console.log('Filtering data. Total predmeti:', predmeti.length);
     const filtered = predmeti.filter(predmet => {
       if (filters.nazivPredmeta && !predmet.nazivPredmeta.toLowerCase().includes(filters.nazivPredmeta.toLowerCase())) return false;
       if (filters.status && predmet.status !== filters.status) return false;
       if (filters.prioritet && predmet.prioritet !== filters.prioritet) return false;
       if (filters.odgovornaOsoba && !predmet.odgovornaOsoba.toLowerCase().includes(filters.odgovornaOsoba.toLowerCase())) return false;
-      if (filters.kategorijaId && predmet.kategorijaId !== parseInt(filters.kategorijaId)) return false;
+      if (filters.kategorijaSkracenica && !predmet.kategorijaSkracenica?.toLowerCase().includes(filters.kategorijaSkracenica.toLowerCase())) return false;
       return true;
     });
 
@@ -606,6 +640,38 @@ export default function PredmetiPage() {
     console.log('Filtered data length:', filtered.length);
     return filtered;
   }, [predmeti, filters, sortConfig]);
+
+  // Dodaj custom checkbox kolonu na početak
+  const columnsWithSelection: GridColDef[] = useMemo(() => [
+    {
+      field: 'customSelect',
+      headerName: '',
+      name: 'customSelect',
+      width: 50,
+      sortable: false,
+      filterable: false,
+      renderHeader: () => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.size > 0 && customSelectedIds.size === filteredData.length}
+          ref={checkbox => {
+            if (checkbox) checkbox.indeterminate = customSelectedIds.size > 0 && customSelectedIds.size < filteredData.length;
+          }}
+          onChange={toggleSelectAll}
+          className="cursor-pointer"
+        />
+      ),
+      renderCell: (params: GridRenderCellParams) => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.has(params.row.predmetId)}
+          onChange={() => toggleRowSelection(params.row.predmetId)}
+          className="cursor-pointer"
+        />
+      ),
+    },
+    ...columns
+  ], [customSelectedIds, filteredData.length, toggleSelectAll, toggleRowSelection, columns]);
   
   // Pagination functions
   const handlePageSizeChange = (newPageSize: number) => {
@@ -628,18 +694,6 @@ export default function PredmetiPage() {
   
   const totalPages = Math.ceil(filteredData.length / pageSize);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('DataGrid debug:', {
-      predmetiLength: predmeti.length,
-      filteredDataLength: filteredData.length,
-      columnsLength: columns.length,
-      loading,
-      error,
-      predmetiSample: predmeti.slice(0, 3).map(p => ({ id: p.predmetId, naziv: p.nazivPredmeta })),
-      filteredDataSample: filteredData.slice(0, 3).map(p => ({ id: p.predmetId, naziv: p.nazivPredmeta }))
-    });
-  }, [predmeti.length, filteredData.length, columns.length, loading, error, predmeti, filteredData]);
 
   if (loading) {
     return (
@@ -738,9 +792,18 @@ export default function PredmetiPage() {
                    className="flex items-center gap-2 px-3 py-1.5 bg-[#E5E7EB] text-[#1F2937] rounded-md hover:bg-[#D1D5DB] transition-colors duration-200 text-sm font-medium cursor-pointer"
                 >
                   <FileDownload className="w-4 h-4" />
-                  Извоз
-                </button>
-              </PermissionGuard>
+                      Извоз
+                    </button>
+                    {customSelectedIds.size > 0 && (
+                      <button
+                        onClick={() => setExportDialogOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200 text-sm font-medium cursor-pointer shadow-md"
+                      >
+                        <FileDownload className="w-4 h-4" />
+                        Извоз означених ({customSelectedIds.size})
+                      </button>
+                    )}
+                  </PermissionGuard>
               <button
                 onClick={() => {
                   // TODO: Implement column visibility toggle
@@ -817,19 +880,14 @@ export default function PredmetiPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Категорија</label>
-                                     <select 
-                     value={filters.kategorijaId}
-                     onChange={(e) => setFilters(prev => ({ ...prev, kategorijaId: e.target.value }))}
-                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
-                   >
-                    <option value="">Све категорије</option>
-                    {kategorije.map((kategorija) => (
-                      <option key={kategorija.kategorijaId} value={kategorija.kategorijaId}>
-                        {kategorija.naziv}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Скраћеница категорије</label>
+                  <input
+                    type="text"
+                    placeholder="Претражи по скраћеници (нпр. GRP, KRI)..."
+                    value={filters.kategorijaSkracenica}
+                    onChange={(e) => setFilters(prev => ({ ...prev, kategorijaSkracenica: e.target.value.toUpperCase() }))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                  />
                 </div>
                 <div className="flex items-end gap-2">
                                      <button
@@ -838,7 +896,7 @@ export default function PredmetiPage() {
                        status: '',
                        prioritet: '',
                        odgovornaOsoba: '',
-                       kategorijaId: ''
+                       kategorijaSkracenica: ''
                      })}
                      className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-200 font-medium cursor-pointer"
                    >
@@ -859,7 +917,7 @@ export default function PredmetiPage() {
           <Paper sx={{ height: 600, width: '100%' }}>
                                                <DataGrid
               rows={filteredData}
-              columns={columns}
+              columns={columnsWithSelection}
               getRowId={(row) => row.predmetId}
               paginationModel={{ page: currentPage, pageSize: pageSize }}
               onPaginationModelChange={(model) => {
@@ -867,7 +925,6 @@ export default function PredmetiPage() {
                 setPageSize(model.pageSize);
               }}
               pageSizeOptions={[10, 25, 50, 100]}
-              checkboxSelection
               disableRowSelectionOnClick
               disableColumnMenu
               disableColumnSorting
@@ -906,11 +963,16 @@ export default function PredmetiPage() {
                                <span className="text-sm text-gray-600">
                                  Укупно: <span className="font-semibold text-gray-800">{predmeti.length}</span> предмета
                                </span>
-                               {filteredData.length !== predmeti.length && (
-                                 <span className="text-sm text-gray-600">
-                                   Филтрирано: <span className="font-semibold text-gray-800">{filteredData.length}</span>
-                                 </span>
-                               )}
+                              {filteredData.length !== predmeti.length && (
+                                <span className="text-sm text-gray-600">
+                                  Филтрирано: <span className="font-semibold text-gray-800">{filteredData.length}</span>
+                                </span>
+                              )}
+                              {customSelectedIds.size > 0 && (
+                                <span className="text-sm text-blue-600">
+                                  Означено: <span className="font-semibold text-blue-800">{customSelectedIds.size}</span> за извоз
+                                </span>
+                              )}
                                <button
                                  onClick={handleRefresh}
                                  disabled={refreshing}
@@ -1001,8 +1063,9 @@ export default function PredmetiPage() {
           columns={columns
             .filter(col => col.field !== 'actions') // Uklanjamo actions kolonu iz izvoza
             .map(col => ({ accessorKey: col.field, header: col.headerName || col.field }))}
-          data={filteredData as unknown as Record<string, unknown>[]}
-          onExport={handleExport}
+            data={filteredData as unknown as Record<string, unknown>[]}
+            selectedRows={Array.from(customSelectedIds) as any}
+            onExport={handleExport}
         />
 
         <PredmetDetaljiModal

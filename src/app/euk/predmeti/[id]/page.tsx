@@ -14,17 +14,19 @@ interface Predmet {
   rokZaZavrsetak: string;
   kategorijaId: number;
   kategorijaNaziv?: string;
-  brojUgrozenihLica?: number;
+  kategorijaSkracenica?: string;
   datumKreiranja?: string;
   kategorija?: {
     kategorijaId: number;
     naziv: string;
+    skracenica: string;
   };
 }
 
 interface Kategorija {
   kategorijaId: number;
   naziv: string;
+  skracenica: string;
 }
 
 export default function PredmetDetaljiPage() {
@@ -57,7 +59,6 @@ export default function PredmetDetaljiPage() {
         rokZaZavrsetak: '2025-12-31',
         kategorijaId: 1,
         datumKreiranja: '2025-01-01',
-        brojUgrozenihLica: 5
       });
     } catch (err) {
       console.error('Error fetching predmet:', err);
@@ -297,20 +298,16 @@ export default function PredmetDetaljiPage() {
                   </div>
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-gray-600 mb-1">Категорија</label>
-                    <p className="text-lg font-semibold text-gray-900">{getKategorijaNaziv(predmet.kategorijaId)}</p>
+                    <div className="flex items-center gap-2">
+                      {predmet.kategorijaSkracenica && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                          {predmet.kategorijaSkracenica}
+                        </span>
+                      )}
+                      <p className="text-lg font-semibold text-gray-900">{getKategorijaNaziv(predmet.kategorijaId)}</p>
+                    </div>
                   </div>
                 </div>
-                {predmet.brojUgrozenihLica && (
-                  <div className="flex items-start space-x-4">
-                    <div className="p-2 bg-red-100 rounded-lg">
-                      <span className="text-red-600 text-lg">⚠️</span>
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Број угрожених лица</label>
-                      <p className="text-lg font-semibold text-gray-900">{predmet.brojUgrozenihLica}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 

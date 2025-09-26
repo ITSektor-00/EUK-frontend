@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useUser } from "../ThemeContext";
 import { useAuth } from "../../contexts/AuthContext";
 import AdminNotifications from "../admin/korisnici/AdminNotifications";
+import LicenseNotification from "../../components/LicenseNotification";
 
 type User = {
   id: number;
@@ -217,6 +218,11 @@ export default function AdminNavbar({ user: propUser, onLogout }: AdminNavbarPro
       
       {/* Desna strana: admin notifikacije i profil dugme */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Licencno obaveštenje */}
+        <div className="hidden md:block mr-1">
+          <LicenseNotification />
+        </div>
+        
         {/* Admin notifikacije */}
         <div className="hidden md:block mr-1">
           <AdminNotifications />

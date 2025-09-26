@@ -18,7 +18,8 @@ export default function NovoKategorijaModal({
   token
 }: NovoKategorijaModalProps) {
   const [formData, setFormData] = useState<KategorijaFormData>({
-    naziv: ''
+    naziv: '',
+    skracenica: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +27,13 @@ export default function NovoKategorijaModal({
   useEffect(() => {
     if (editingKategorija) {
       setFormData({
-        naziv: editingKategorija.naziv || ''
+        naziv: editingKategorija.naziv || '',
+        skracenica: editingKategorija.skracenica || ''
       });
     } else {
       setFormData({
-        naziv: ''
+        naziv: '',
+        skracenica: ''
       });
     }
     setError(null);
@@ -109,6 +112,24 @@ export default function NovoKategorijaModal({
               placeholder="Унесите назив категорије"
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Скраћеница *
+            </label>
+            <input
+              type="text"
+              value={formData.skracenica}
+              onChange={(e) => setFormData(prev => ({ ...prev, skracenica: e.target.value.toUpperCase() }))}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+              placeholder="Унесите скраћеницу (макс. 10 карактера)"
+              maxLength={10}
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Максимално 10 карактера. Скраћеница мора бити јединствена.
+            </p>
           </div>
 
 

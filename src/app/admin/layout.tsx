@@ -9,6 +9,7 @@ import AdminNotifications from './korisnici/AdminNotifications';
 import { ThemeProvider } from '../ThemeContext';
 import ClientLayoutShell from '../ClientLayoutShell';
 import { AdminPanelGuard } from '../../components/RoleBasedGuards';
+import LicenseGuard from '../../components/LicenseGuard';
 
 export default function AdminLayout({
   children,
@@ -49,38 +50,40 @@ export default function AdminLayout({
     <ThemeProvider>
       <ClientLayoutShell>
         <AdminPanelGuard>
-          <div className="flex h-screen bg-gray-100">
-            {/* Navbar - fiksiran na vrhu */}
-            <div className="fixed top-0 left-0 right-0 z-40">
-              <AdminNavbar 
-                user={user}
-                onLogout={handleLogout}
-              />
-              {/* Admin notifications u navbar */}
-              <div className="absolute right-4 top-1/2 transform -translate-y-1/2 z-50">
-                <AdminNotifications />
+          <LicenseGuard>
+            <div className="flex h-screen bg-gray-100">
+              {/* Navbar - fiksiran na vrhu */}
+              <div className="fixed top-0 left-0 right-0 z-40">
+                <AdminNavbar 
+                  user={user}
+                  onLogout={handleLogout}
+                />
+                {/* Admin notifications u navbar */}
+                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 z-50">
+                  <AdminNotifications />
+                </div>
+              </div>
+
+              {/* Sidebar - ispod navbar-a, samo sa admin opcijama */}
+              <div className={`${sidebarOpen ? 'w-64' : 'w-16'} transition-all duration-300 ease-in-out bg-white shadow-lg z-30 fixed left-0 top-12 h-full`}>
+                <SidebarNav 
+                  sidebarOpen={sidebarOpen}
+                  onToggle={() => setSidebarOpen(!sidebarOpen)}
+                  isAdmin={true}
+                  showOnlyUsers={true}
+                  userId={user?.id || null}
+                />
+              </div>
+
+              {/* Main Content - sa margin-left za sidebar */}
+              <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
+                {/* Main Content Area */}
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100" style={{ marginTop: '48px' }}>
+                  {children}
+                </main>
               </div>
             </div>
-
-            {/* Sidebar - ispod navbar-a, samo sa admin opcijama */}
-            <div className={`${sidebarOpen ? 'w-64' : 'w-16'} transition-all duration-300 ease-in-out bg-white shadow-lg z-30 fixed left-0 top-12 h-full`}>
-              <SidebarNav 
-                sidebarOpen={sidebarOpen}
-                onToggle={() => setSidebarOpen(!sidebarOpen)}
-                isAdmin={true}
-                showOnlyUsers={true}
-                userId={user?.id || null}
-              />
-            </div>
-
-            {/* Main Content - sa margin-left za sidebar */}
-            <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
-              {/* Main Content Area */}
-              <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100" style={{ marginTop: '48px' }}>
-                {children}
-              </main>
-            </div>
-          </div>
+          </LicenseGuard>
         </AdminPanelGuard>
       </ClientLayoutShell>
     </ThemeProvider>

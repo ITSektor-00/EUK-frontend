@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useUser } from "./ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
 import NotificationBell from "./components/NotificationBell";
+import LicenseNotification from "../components/LicenseNotification";
 
 type User = {
   id: number;
@@ -95,7 +96,6 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
   const { user: contextUser, loading } = useUser();
   const { token } = useAuth();
   
-  console.log('Navbar token:', token); // Debug log
   
   // Funkcija za proveru isteka token-a - trenutno neiskorišćena
   // const checkTokenExpiry = () => {
@@ -245,6 +245,11 @@ export default function Navbar({ user: propUser, onLogout }: NavbarProps) {
       
       {/* Desna strana: notifikacije i profil dugme */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Licencno obaveštenje */}
+        <div className="hidden md:block mr-1">
+          <LicenseNotification />
+        </div>
+        
         {/* Notifikacije, samo na md+ i samo za ne-admin korisnike */}
         {!isAdmin && (
           <div className="hidden md:block mr-1">

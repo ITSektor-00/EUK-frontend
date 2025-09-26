@@ -3,6 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { apiService } from '../../../services/api';
 import { UgrozenoLiceFormData, UgrozenoLiceT1 } from './types';
 
+interface Kategorija {
+  kategorijaId: number;
+  naziv: string;
+  skracenica: string;
+}
+
 interface NovoUgrozenoLiceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -20,6 +26,7 @@ export default function NovoUgrozenoLiceModal({
   editingUgrozenoLice,
   token
 }: NovoUgrozenoLiceModalProps) {
+  const [kategorije, setKategorije] = useState<Kategorija[]>([]);
   const [formData, setFormData] = useState<UgrozenoLiceFormData>({
     redniBroj: '',
     ime: '',
@@ -40,6 +47,23 @@ export default function NovoUgrozenoLiceModal({
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Dohvati kategorije
+  const fetchKategorije = async () => {
+    try {
+      const data = await apiService.getKategorije('', token);
+      setKategorije(data);
+    } catch (err) {
+      console.error('Greška pri učitavanju kategorija:', err);
+    }
+  };
+
+  // Dohvati kategorije kada se modal otvori
+  useEffect(() => {
+    if (isOpen) {
+      fetchKategorije();
+    }
+  }, [isOpen]);
 
   // Update form data when editingUgrozenoLice changes
   useEffect(() => {
@@ -356,13 +380,18 @@ export default function NovoUgrozenoLiceModal({
             {/* Osnov sticanja statusa */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Основ стицања статуса</label>
-              <input
-                type="text"
+              <select
                 value={formData.osnovSticanjaStatusa}
                 onChange={(e) => handleChange('osnovSticanjaStatusa', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                placeholder="Унесите основ стицања статуса"
-              />
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
+              >
+                <option value="">Изаберите категорију...</option>
+                {kategorije.map(kat => (
+                  <option key={kat.kategorijaId} value={kat.skracenica}>
+                    {kat.skracenica} - {kat.naziv}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* ED broj/broj mernog uređaja */}

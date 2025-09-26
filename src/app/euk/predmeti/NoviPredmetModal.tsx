@@ -5,6 +5,7 @@ import { apiService } from '../../../services/api';
 interface Kategorija {
   kategorijaId: number;
   naziv: string;
+  skracenica: string;
 }
 
 interface Predmet {
@@ -15,6 +16,7 @@ interface Predmet {
   prioritet: string;
   rokZaZavrsetak: string;
   kategorijaId: number;
+  kategorijaSkracenica?: string;
 }
 
 interface NoviPredmetModalProps {

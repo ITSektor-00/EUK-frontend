@@ -1,11 +1,13 @@
 export interface KategorijaT1 {
   kategorijaId?: number;
   naziv: string;
+  skracenica: string;
   [key: string]: string | number | boolean | undefined;
 }
 
 export interface KategorijaFormData {
   naziv: string;
+  skracenica: string;
   [key: string]: string | number | boolean | undefined;
 }
 
@@ -23,4 +25,5 @@ export interface KategorijaStatistics {
 
 export interface KategorijaFilters {
   naziv?: string;
+  skracenica?: string;
 }

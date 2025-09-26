@@ -50,6 +50,32 @@ export default function UgrozenoLiceT2Page() {
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
+  // State za custom selekciju
+  const [customSelectedIds, setCustomSelectedIds] = useState<Set<number>>(new Set());
+  
+  // Toggle funkcija za selekciju
+  const toggleRowSelection = (id: number) => {
+    setCustomSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all / Deselect all
+  const toggleSelectAll = () => {
+    if (customSelectedIds.size > 0) {
+      setCustomSelectedIds(new Set());
+    } else {
+      const allIds = new Set(ugrozenaLicaT2.map(row => row.ugrozenoLiceId).filter((id): id is number => Boolean(id)));
+      setCustomSelectedIds(allIds);
+    }
+  };
+
   // Filter states
   const [filters, setFilters] = useState({
     redniBroj: '',
@@ -401,6 +427,38 @@ export default function UgrozenoLiceT2Page() {
       )
     },
   ]), [renderSimpleHeader, token]);
+
+  // Dodaj custom checkbox kolonu na početak
+  const columnsWithSelection: GridColDef[] = useMemo(() => [
+    {
+      field: 'customSelect',
+      headerName: '',
+      name: 'customSelect',
+      width: 50,
+      sortable: false,
+      filterable: false,
+      renderHeader: () => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.size > 0 && customSelectedIds.size === ugrozenaLicaT2.length}
+          ref={checkbox => {
+            if (checkbox) checkbox.indeterminate = customSelectedIds.size > 0 && customSelectedIds.size < ugrozenaLicaT2.length;
+          }}
+          onChange={toggleSelectAll}
+          className="cursor-pointer"
+        />
+      ),
+      renderCell: (params: GridRenderCellParams) => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.has(params.row.ugrozenoLiceId)}
+          onChange={() => toggleRowSelection(params.row.ugrozenoLiceId)}
+          className="cursor-pointer"
+        />
+      ),
+    },
+    ...columns
+  ], [customSelectedIds, ugrozenaLicaT2.length, toggleSelectAll, toggleRowSelection, columns]);
 
   if (loading) {
     return (

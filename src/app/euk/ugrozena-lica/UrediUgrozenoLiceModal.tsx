@@ -2,6 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { UgrozenoLiceT1, UgrozenoLiceFormData } from './types';
 import { Button } from '@/components/ui/button';
+import { apiService } from '../../../services/api';
+
+interface Kategorija {
+  kategorijaId: number;
+  naziv: string;
+  skracenica: string;
+}
 
 interface UrediUgrozenoLiceModalProps {
   open: boolean;
@@ -16,6 +23,7 @@ export default function UrediUgrozenoLiceModal({
   onClose, 
   onSave 
 }: UrediUgrozenoLiceModalProps) {
+  const [kategorije, setKategorije] = useState<Kategorija[]>([]);
   const [formData, setFormData] = useState<UgrozenoLiceFormData>({
     redniBroj: '',
     ime: '',
@@ -36,6 +44,22 @@ export default function UrediUgrozenoLiceModal({
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof UgrozenoLiceFormData, string>>>({});
+
+  // Dohvati kategorije
+  const fetchKategorije = async () => {
+    try {
+      const data = await apiService.getKategorije('', '');
+      setKategorije(data);
+    } catch (err) {
+      console.error('Greška pri učitavanju kategorija:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      fetchKategorije();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (ugrozenoLice) {
@@ -285,15 +309,20 @@ export default function UrediUgrozenoLiceModal({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Osnov sticanja statusa
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.osnovSticanjaStatusa}
                 onChange={(e) => handleChange('osnovSticanjaStatusa', e.target.value)}
                 className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   errors.osnovSticanjaStatusa ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="Unesite osnov sticanja statusa"
-              />
+              >
+                <option value="">Изаберите категорију...</option>
+                {kategorije.map(kat => (
+                  <option key={kat.kategorijaId} value={kat.skracenica}>
+                    {kat.skracenica} - {kat.naziv}
+                  </option>
+                ))}
+              </select>
               {errors.osnovSticanjaStatusa && <p className="text-red-500 text-sm mt-1">{errors.osnovSticanjaStatusa}</p>}
             </div>
 
