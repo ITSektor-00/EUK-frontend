@@ -24,11 +24,11 @@ export default function RegisterPage() {
         
         <RegisterForm />
         
-        <div className="subtle-divider my-2"></div>
+        <div className="subtle-divider my-1.5"></div>
         
-        <div className="text-center mt-2">
-          <p className="text-gray-700 mb-2 text-sm">Већ имате налог?</p>
-          <div className={`flex ${isMobile ? 'flex-col gap-2' : 'gap-3'}`}>
+        <div className="text-center mt-1">
+          <p className="text-gray-700 mb-1 text-sm">Већ имате налог?</p>
+          <div className={`flex ${isMobile ? 'flex-col gap-1' : 'gap-2'}`}>
             <button 
               onClick={() => router.push('/login')}
               className="btn btn-secondary flex-1"

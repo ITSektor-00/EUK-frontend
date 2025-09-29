@@ -3,8 +3,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useUser } from "../ThemeContext";
 import { useAuth } from "../../contexts/AuthContext";
-import NotificationBell from "./NotificationBell";
-import LicenseNotification from "../../components/LicenseNotification";
+import LicenseNotificationBell from "../../components/LicenseNotificationBell";
 
 type User = {
   id: number;
@@ -91,7 +90,6 @@ interface UserNavbarProps {
 
 export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps) {
   const [profilOpen, setProfilOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
   const { user: contextUser, loading } = useUser();
   const { token } = useAuth();
   
@@ -122,41 +120,7 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
     };
   }, [profilOpen]);
 
-  React.useEffect(() => {
-    if (modalOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [modalOpen]);
 
-  // Zatvori modal kada se klikne van njega ili pritisne ESC
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as Element;
-      if (modalOpen && target.classList.contains('modal-overlay')) {
-        setModalOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (modalOpen && event.key === 'Escape') {
-        setModalOpen(false);
-      }
-    }
-
-    if (modalOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [modalOpen]);
 
   async function handleLogout() {
     if (onLogout) {
@@ -194,7 +158,7 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
     <header className="sticky top-0 z-40 h-12 border-b border-[var(--border-color)] flex items-center px-2 sm:px-4 justify-between w-full shadow-sm transition-all duration-300" style={{ backgroundColor: '#4F46E5' }}>
       {/* Leva strana: logo i naziv */}
       <div className="flex items-center gap-2 select-none">
-        <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-200">
+        <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity duration-200 cursor-pointer">
           <Image
             src="/picture/grbBeograd.svg"
             alt="Grb Beograda"
@@ -220,18 +184,13 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Licencno obaveštenje */}
         <div className="hidden md:block mr-1">
-          <LicenseNotification />
-        </div>
-        
-        {/* Notifikacije za korisnike */}
-        <div className="hidden md:block mr-1">
-          <NotificationBell />
+          <LicenseNotificationBell />
         </div>
         
         {/* Profil dugme uvek vidljivo */}
         <div className="relative ml-1 profile-dropdown">
           <button
-            className="inline-flex items-center justify-center w-9 h-9 rounded-full focus:outline-none transition-colors duration-200 overflow-hidden hover:bg-white/20"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full focus:outline-none transition-colors duration-200 overflow-hidden hover:bg-white/20 cursor-pointer"
             onClick={() => user && setProfilOpen(v => !v)}
             aria-label="Profil"
           >
@@ -276,16 +235,7 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
                 </div>
               </div>
               <button
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-100 hover:bg-yellow-200 text-yellow-900 text-black font-semibold mb-2 transition-colors"
-                onClick={() => { setModalOpen(true); setProfilOpen(false); }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6 6M3 21h6v-6l9-9a2.828 2.828 0 10-4-4l-9 9z" />
-                </svg>
-                Uredi profil
-              </button>
-              <button
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold cursor-pointer"
                 onClick={handleLogout}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -298,307 +248,7 @@ export default function UserNavbar({ user: propUser, onLogout }: UserNavbarProps
         </div>
       </div>
       
-      {/* Modal za izmenu profila */}
-      {modalOpen && (
-        <ProfileModal user={user} onClose={() => setModalOpen(false)} />
-      )}
     </header>
   )
 }
 
-// Modal za izmenu profila - isti kao u originalnom Navbar.tsx
-function ProfileModal({ user, onClose }: { user: UserData | User | null | undefined, onClose: () => void }) {
-  const [ime, setIme] = useState(() => {
-    if (!user) return "";
-    return user.firstName || (user as User).ime || "";
-  })
-  const [prezime, setPrezime] = useState(() => {
-    if (!user) return "";
-    return user.lastName || (user as User).prezime || "";
-  })
-  const [email, setEmail] = useState(user?.email || "")
-  const [username, setUsername] = useState(user?.username || "")
-  const [lozinka, setLozinka] = useState("")
-  const [potvrdaLozinke, setPotvrdaLozinke] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-
-  // Zatvori modal kada se klikne van njega ili pritisne ESC
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as Element;
-      if (target.classList.contains('modal-overlay')) {
-        onClose();
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
-    setSuccess("")
-    
-    // Uzmi token iz localStorage-a direktno
-    const token = localStorage.getItem('token');
-    
-    // Proveri da li je token istekao
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const expiry = payload.exp * 1000; // konvertuj u milisekunde
-        
-        if (Date.now() >= expiry) {
-          localStorage.removeItem('token');
-          setError('Token je istekao. Molimo prijavite se ponovo.');
-          setLoading(false)
-          return
-        }
-      } catch (error) {
-        console.error('Greška pri proveri token-a:', error);
-        setError('Greška pri proveri token-a.');
-        setLoading(false)
-        return
-      }
-    }
-    
-    // Validacija lozinke
-    if (lozinka && lozinka.length < 6) {
-      setError("Lozinka mora imati najmanje 6 karaktera")
-      setLoading(false)
-      return
-    }
-    
-    if (lozinka && lozinka !== potvrdaLozinke) {
-      setError("Lozinke se ne poklapaju")
-      setLoading(false)
-      return
-    }
-    
-    try {
-      if (!token) {
-        setError("Nema token-a. Molimo prijavite se ponovo.")
-        setLoading(false)
-        return
-      }
-
-      const response = await fetch('/api/profil', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          username,
-          first_name: ime,
-          last_name: prezime,
-          email,
-          password: lozinka || undefined,
-          current_username: user?.username
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccess("Profil uspešno ažuriran!")
-        setLozinka("")
-        setPotvrdaLozinke("")
-        
-        // Ažuriraj lokalno stanje
-        setTimeout(() => {
-          onClose();
-          window.location.reload();
-        }, 1500);
-      } else {
-        setError(data.error || "Greška pri ažuriranju profila")
-      }
-    } catch (error) {
-      console.error('Greška pri ažuriranju profila:', error);
-      setError("Greška pri ažuriranju profila")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-overlay">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Uredi profil</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
-            {success}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Ime
-            </label>
-            <input
-              type="text"
-              value={ime}
-              onChange={(e) => setIme(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Prezime
-            </label>
-            <input
-              type="text"
-              value={prezime}
-              onChange={(e) => setPrezime(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Korisničko ime
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nova lozinka (opciono)
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={lozinka}
-                onChange={(e) => setLozinka(e.target.value)}
-                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="Ostavite prazno ako ne želite da promenite"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center"
-              >
-                {showPassword ? (
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {lozinka && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Potvrda nove lozinke
-              </label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={potvrdaLozinke}
-                  onChange={(e) => setPotvrdaLozinke(e.target.value)}
-                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  required={!!lozinka}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                >
-                  {showConfirmPassword ? (
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              Otkaži
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-            >
-              {loading ? "Čuvam..." : "Sačuvaj"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}

@@ -28,8 +28,9 @@ export default function KorisniciPage() {
   const { token } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('pending');
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<{ [key: number]: string }>({});
   
   // Pagination state
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -49,6 +50,7 @@ export default function KorisniciPage() {
   // Debounced loadUsers to prevent multiple rapid calls
   const loadUsersTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+
   const loadUsers = async (page: number = 1, resetFilters: boolean = false) => {
     try {
       setLoading(true);
@@ -64,7 +66,10 @@ export default function KorisniciPage() {
         page: page - 1, // Convert to 0-based indexing for Spring Boot
         size: pagination.size,
         ...(roleFilter && { role: roleFilter }),
-        ...(debouncedSearchTerm && { search: debouncedSearchTerm })
+        ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
+        // Add filter for user status
+        ...(filter === 'pending' && { isActive: false }),
+        ...(filter === 'approved' && { isActive: true })
       };
 
       // Pojednostavljen API poziv
@@ -147,12 +152,24 @@ export default function KorisniciPage() {
     }
   }, [debouncedSearchTerm, roleFilter, token]);
 
+  // Load users when filter changes
+  useEffect(() => {
+    if (token) {
+      loadUsers(1, false);
+    }
+  }, [filter, token]);
+
   const handleApprove = async (userId: number) => {
     try {
+      console.log('Approving user:', userId);
       setError(null);
-      setLoading(true); // Show loading state
-      await apiService.approveUser(userId, token!);
+      setActionLoading(prev => ({ ...prev, [userId]: 'approve' }));
+      
+      const result = await apiService.approveUser(userId, token!);
+      console.log('Approve result:', result);
+      
       await loadUsers(pagination.page);
+      console.log('Users reloaded after approval');
     } catch (err) {
       console.error('Error approving user:', err);
       if (err instanceof Error) {
@@ -167,16 +184,25 @@ export default function KorisniciPage() {
         setError('Грешка при одобравању корисника');
       }
     } finally {
-      setLoading(false); // Hide loading state
+      setActionLoading(prev => {
+        const newState = { ...prev };
+        delete newState[userId];
+        return newState;
+      });
     }
   };
 
   const handleReject = async (userId: number) => {
     try {
+      console.log('Rejecting user:', userId);
       setError(null);
-      setLoading(true); // Show loading state
-      await apiService.rejectUser(userId, token!);
+      setActionLoading(prev => ({ ...prev, [userId]: 'reject' }));
+      
+      const result = await apiService.rejectUser(userId, token!);
+      console.log('Reject result:', result);
+      
       await loadUsers(pagination.page);
+      console.log('Users reloaded after rejection');
     } catch (err) {
       console.error('Error rejecting user:', err);
       if (err instanceof Error) {
@@ -191,14 +217,18 @@ export default function KorisniciPage() {
         setError('Грешка при одбијању корисника');
       }
     } finally {
-      setLoading(false); // Hide loading state
+      setActionLoading(prev => {
+        const newState = { ...prev };
+        delete newState[userId];
+        return newState;
+      });
     }
   };
 
   const handleRoleChange = async (userId: number, newRole: string) => {
     try {
       setError(null);
-      setLoading(true); // Show loading state
+      setActionLoading(prev => ({ ...prev, [userId]: 'role' }));
       await apiService.updateUserRole(userId, newRole, token!);
       // Reload users after successful role change
       await loadUsers(pagination.page);
@@ -216,24 +246,38 @@ export default function KorisniciPage() {
         setError('Грешка при ажурирању роле корисника');
       }
     } finally {
-      setLoading(false); // Hide loading state
+      setActionLoading(prev => {
+        const newState = { ...prev };
+        delete newState[userId];
+        return newState;
+      });
     }
   };
 
   const handleDeleteUser = async (userId: number) => {
-    if (window.confirm('Да ли сте сигурни да желите да обришете овог корисника?')) {
-      try {
-        setError(null);
-        await apiService.deleteUser(userId, token!);
-        await loadUsers(pagination.page);
-      } catch (err) {
-        console.error('Error deleting user:', err);
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('Грешка при брисању корисника');
-        }
+    try {
+      console.log('Deleting user:', userId);
+      setError(null);
+      setActionLoading(prev => ({ ...prev, [userId]: 'delete' }));
+      
+      const result = await apiService.deleteUser(userId, token!);
+      console.log('Delete result:', result);
+      
+      await loadUsers(pagination.page);
+      console.log('Users reloaded after deletion');
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Грешка при брисању корисника');
       }
+    } finally {
+      setActionLoading(prev => {
+        const newState = { ...prev };
+        delete newState[userId];
+        return newState;
+      });
     }
   };
 
@@ -253,18 +297,8 @@ export default function KorisniciPage() {
     setFilter('all');
   };
 
-  const filteredUsers = users.filter(user => {
-    switch (filter) {
-      case 'pending':
-        return !user.isActive && !user.isApproved; // Korisnici koji nisu aktivni i nisu odobreni (na čekanju)
-      case 'approved':
-        return user.isActive && user.isApproved; // Aktivni i odobreni korisnici
-      case 'rejected':
-        return !user.isActive && !user.isApproved; // Korisnici koji su odbijeni (neaktivni i neodobreni)
-      default:
-        return true; // Svi korisnici
-    }
-  });
+  // Use users directly since backend filtering is now handled
+  const filteredUsers = users;
 
   // Debug logging - uklonjen da smanjimo opterećenje
 
@@ -394,25 +428,19 @@ export default function KorisniciPage() {
           onClick={() => setFilter('pending')}
           className={`px-4 py-2 rounded-lg ${filter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
         >
-          НА ЧЕКАЊУ ({users.filter(u => !u.isActive && !u.isApproved).length})
+          НА ЧЕКАЊУ
         </button>
         <button
           onClick={() => setFilter('approved')}
           className={`px-4 py-2 rounded-lg ${filter === 'approved' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
         >
-          ОДОБРЕНИ ({users.filter(u => u.isActive && u.isApproved).length})
-        </button>
-        <button
-          onClick={() => setFilter('rejected')}
-          className={`px-4 py-2 rounded-lg ${filter === 'rejected' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-        >
-          ОДБИЈЕНИ ({users.filter(u => !u.isActive && !u.isApproved).length})
+          ОДОБРЕНИ
         </button>
         <button
           onClick={() => setFilter('all')}
           className={`px-4 py-2 rounded-lg ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
         >
-          СВИ ({users.length})
+          СВИ
         </button>
       </div>
 
@@ -461,53 +489,89 @@ export default function KorisniciPage() {
                   <select
                     value={user.role}
                     onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                    className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={actionLoading[user.id] === 'role'}
+                    className={`text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      actionLoading[user.id] === 'role' ? 'bg-gray-100 cursor-not-allowed' : ''
+                    }`}
                   >
                     <option value="admin">Admin</option>
                     <option value="korisnik">Korisnik</option>
                   </select>
+                  {actionLoading[user.id] === 'role' && (
+                    <span className="ml-2 text-xs text-gray-500">Ажурирам...</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(user.createdAt).toLocaleDateString('sr-Latn-RS')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  {/* Neaktivni korisnici (na čekanju) - mogu da se odobre ili odbiju */}
+                  {/* Neaktivni korisnici (na čekanju) - samo odobri ili odbij */}
                   {!user.isActive && (
                     <>
                       <button
-                        onClick={() => handleApprove(user.id)}
-                        className="text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-md transition-colors"
+                        onClick={() => {
+                          console.log('ODOBRI button clicked for user:', user.id);
+                          handleApprove(user.id);
+                        }}
+                        disabled={actionLoading[user.id] === 'approve'}
+                        className={`px-3 py-1 rounded-md transition-colors ${
+                          actionLoading[user.id] === 'approve'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200'
+                        }`}
                       >
-                        ОДОБРИ
+                        {actionLoading[user.id] === 'approve' ? 'Одобравам...' : 'ОДОБРИ'}
                       </button>
                       <button
-                        onClick={() => handleReject(user.id)}
-                        className="text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200 px-3 py-1 rounded-md transition-colors ml-2"
+                        onClick={() => {
+                          console.log('ODBIJ button clicked for user:', user.id);
+                          if (window.confirm('Да ли сте сигурни да желите да одбијете овог корисника? Ова акција ће обрисати корисника из базе.')) {
+                            handleDeleteUser(user.id);
+                          }
+                        }}
+                        disabled={actionLoading[user.id] === 'delete'}
+                        className={`px-3 py-1 rounded-md transition-colors ml-2 ${
+                          actionLoading[user.id] === 'delete'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200'
+                        }`}
                       >
-                        ОДБИЈ
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition-colors ml-2"
-                      >
-                        ОБРИШИ
+                        {actionLoading[user.id] === 'delete' ? 'Одбијам...' : 'ОДБИЈ'}
                       </button>
                     </>
                   )}
-                  {/* Aktivni korisnici (odobreni) - mogu da se odbiju ili obrišu */}
+                  {/* Aktivni korisnici - mogu da se deaktiviraju ili obrišu */}
                   {user.isActive && (
                     <>
                       <button
-                        onClick={() => handleReject(user.id)}
-                        className="text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200 px-3 py-1 rounded-md transition-colors"
+                        onClick={() => {
+                          console.log('DEAKTIVIRAJ button clicked for user:', user.id);
+                          handleReject(user.id);
+                        }}
+                        disabled={actionLoading[user.id] === 'reject'}
+                        className={`px-3 py-1 rounded-md transition-colors ${
+                          actionLoading[user.id] === 'reject'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'text-orange-600 hover:text-orange-900 bg-orange-100 hover:bg-orange-200'
+                        }`}
                       >
-                        ОДБИЈ
+                        {actionLoading[user.id] === 'reject' ? 'Деактивирам...' : 'ДЕАКТИВИРАЈ'}
                       </button>
                       <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-md transition-colors ml-2"
+                        onClick={() => {
+                          console.log('OBRISI button clicked for user:', user.id);
+                          if (window.confirm('Да ли сте сигурни да желите да обришете овог корисника?')) {
+                            handleDeleteUser(user.id);
+                          }
+                        }}
+                        disabled={actionLoading[user.id] === 'delete'}
+                        className={`px-3 py-1 rounded-md transition-colors ml-2 ${
+                          actionLoading[user.id] === 'delete'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200'
+                        }`}
                       >
-                        ОБРИШИ
+                        {actionLoading[user.id] === 'delete' ? 'Бришем...' : 'ОБРИШИ'}
                       </button>
                     </>
                   )}

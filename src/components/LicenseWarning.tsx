@@ -56,7 +56,7 @@ const LicenseWarning: React.FC<LicenseWarningProps> = ({ className = '' }) => {
       return {
         bgColor: 'bg-red-600',
         icon: '⚠️',
-        title: 'Licenca je istekla'
+        title: 'Лиценца је истекла'
       };
     }
     
@@ -64,7 +64,7 @@ const LicenseWarning: React.FC<LicenseWarningProps> = ({ className = '' }) => {
       return {
         bgColor: 'bg-yellow-600',
         icon: '⏰',
-        title: 'Licenca ističe uskoro'
+        title: 'Лиценца истиче ускоро'
       };
     }
     

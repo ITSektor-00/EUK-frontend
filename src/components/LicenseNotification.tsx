@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLicense } from '../contexts/LicenseContext';
 
 interface LicenseNotificationProps {
@@ -19,18 +19,8 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
   
   const [isOpen, setIsOpen] = useState(false);
 
-  // Ne prikazuj ako je loading
-  if (loading) {
-    return null;
-  }
-
-  // Ne prikazuj ako je greška zbog rate limiting-a
-  if (error && (error.includes('429') || error.includes('Previše zahteva'))) {
-    return null;
-  }
-
-  // Debug logovi
-  console.log('LicenseNotification render:', {
+  // Debug logovi - samo kada se promeni licenceInfo
+  const debugInfo = useMemo(() => ({
     licenseInfo,
     loading,
     error,
@@ -39,23 +29,11 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
     notificationSent: licenseInfo?.notificationSent,
     hasValidLicense: licenseInfo?.hasValidLicense,
     endDate: licenseInfo?.endDate
-  });
+  }), [licenseInfo, loading, error, isLicenseExpired, isLicenseExpiringSoon]);
+  
+  console.log('LicenseNotification render:', debugInfo);
 
-  // Prikaži ako je notificationSent: true ili ako je licenca istekla/ističe uskoro
-  if (!licenseInfo) {
-    console.log('LicenseNotification: Not showing - no license info');
-    return null;
-  }
-
-  // Ako je notificationSent: true, uvek prikaži obaveštenje
-  if (licenseInfo.notificationSent) {
-    console.log('LicenseNotification: Showing - notificationSent is true');
-  } else if (!isLicenseExpired && !isLicenseExpiringSoon) {
-    console.log('LicenseNotification: Not showing - no valid conditions');
-    return null;
-  }
-
-  const getNotificationColor = () => {
+  const notificationColor = useMemo(() => {
     if (isLicenseExpired) {
       return {
         bg: 'bg-red-500',
@@ -85,9 +63,31 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
     }
     
     return null;
-  };
+  }, [isLicenseExpired, isLicenseExpiringSoon, licenseInfo?.notificationSent]);
 
-  const notificationColor = getNotificationColor();
+  // Ne prikazuj ako je loading
+  if (loading) {
+    return null;
+  }
+
+  // Ne prikazuj ako je greška zbog rate limiting-a
+  if (error && (error.includes('429') || error.includes('Previše zahteva'))) {
+    return null;
+  }
+
+  // Prikaži ako je notificationSent: true ili ako je licenca istekla/ističe uskoro
+  if (!licenseInfo) {
+    console.log('LicenseNotification: Not showing - no license info');
+    return null;
+  }
+
+  // Ako je notificationSent: true, uvek prikaži obaveštenje
+  if (licenseInfo.notificationSent) {
+    console.log('LicenseNotification: Showing - notificationSent is true');
+  } else if (!isLicenseExpired && !isLicenseExpiringSoon) {
+    console.log('LicenseNotification: Not showing - no valid conditions');
+    return null;
+  }
   
   if (!notificationColor) {
     return null;
@@ -101,7 +101,9 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
           className={`relative inline-flex items-center justify-center w-9 h-9 rounded-full ${notificationColor.bg} ${notificationColor.hover} ${notificationColor.text} focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-all duration-200 animate-pulse`}
           aria-label="Licencno obaveštenje"
         >
-          <span className="text-lg">{notificationColor.icon}</span>
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5v-5zM10.5 3.75a6 6 0 00-6 6v3.75l-2.25 2.25v1.5h16.5v-1.5L19.5 13.5V9.75a6 6 0 00-6-6h-3z"></path>
+          </svg>
           
           {/* Notification badge - stalno vidljiv */}
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center animate-bounce">
@@ -115,13 +117,15 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
             <div className="p-4 bg-gradient-to-r from-red-50 to-yellow-50">
               <div className="flex items-start space-x-3">
                 <div className={`flex-shrink-0 w-8 h-8 rounded-full ${notificationColor.bg} flex items-center justify-center`}>
-                  <span className="text-white text-sm">{notificationColor.icon}</span>
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5v-5zM10.5 3.75a6 6 0 00-6 6v3.75l-2.25 2.25v1.5h16.5v-1.5L19.5 13.5V9.75a6 6 0 00-6-6h-3z"></path>
+                  </svg>
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-red-800">
-                    {isLicenseExpired ? '⚠️ Licenca je istekla' : 
-                     isLicenseExpiringSoon ? '⏰ Licenca ističe uskoro' : 
-                     '🔔 Licencno obaveštenje'}
+                    {isLicenseExpired ? '⚠️ Лиценца је истекла' : 
+                     isLicenseExpiringSoon ? '⏰ Лиценца истиче ускоро' : 
+                     '🔔 Лиценцно обавештење'}
                   </h3>
                   <p className="text-sm text-gray-700 mt-2 font-medium">
                     {getStatusMessage()}

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useUsernameValidation } from '../hooks/useUsernameValidation';
 import { ValidationIndicator } from './ValidationIndicator';
+import AuthErrorPopup, { AuthError } from './AuthErrorPopup';
 
 const RegisterForm: React.FC = () => {
   const { register } = useAuth();
@@ -21,6 +22,7 @@ const RegisterForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authError, setAuthError] = useState<AuthError | null>(null);
 
   // Real-time validacija korisničkog imena
   const usernameValidation = useUsernameValidation(userData.username);
@@ -61,32 +63,51 @@ const RegisterForm: React.FC = () => {
       // Preusmeri na login stranicu
       router.push('/login');
     } catch (error: unknown) {
-      // Poboljšana obrada grešaka
+      // Poboljšana obrada grešaka sa lepim popup-om
+      let authErrorType: AuthError['type'] = 'INVALID_CREDENTIALS';
       let errorMessage = 'Greška pri registraciji';
       
       if (error instanceof Error && error.message) {
-        // Mapiranje grešaka sa backend-a
+        // Mapiranje grešaka sa backend-a na AuthError tipove
         switch (error.message) {
           case 'Korisničko ime već postoji':
+            authErrorType = 'USER_NOT_FOUND';
             errorMessage = 'Korisničko ime već postoji';
             break;
           case 'Email adresa već postoji':
+            authErrorType = 'USER_NOT_FOUND';
             errorMessage = 'Email adresa već postoji';
             break;
           case 'Pogrešno korisničko ime/email pri prijavi':
+            authErrorType = 'USER_NOT_FOUND';
             errorMessage = 'Pogrešno korisničko ime ili email adresa';
             break;
           case 'Pogrešna lozinka':
+            authErrorType = 'INVALID_CREDENTIALS';
             errorMessage = 'Pogrešna lozinka';
             break;
           case 'Nalog je deaktiviran':
+            authErrorType = 'ACCOUNT_PENDING';
             errorMessage = 'Vaš nalog je deaktiviran. Kontaktirajte administratora.';
             break;
           default:
+            // Proverava da li je network greška
+            if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('konekcija')) {
+              authErrorType = 'NETWORK_ERROR';
+            }
             errorMessage = error.message;
         }
       }
       
+      // Postavi AuthError za popup
+      setAuthError({
+        type: authErrorType,
+        message: errorMessage,
+        title: '',
+        icon: ''
+      });
+      
+      // Zadržavamo i staru error logiku za slučaj da popup ne radi
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -94,8 +115,20 @@ const RegisterForm: React.FC = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2.5">
-      <div className="grid grid-cols-2 gap-2.5">
+    <>
+      {authError && (
+        <AuthErrorPopup 
+          error={authError}
+          onClose={() => setAuthError(null)}
+          onRetry={() => {
+            setAuthError(null);
+            setError('');
+          }}
+        />
+      )}
+      
+      <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
         <div>
           <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
             Име
@@ -105,7 +138,7 @@ const RegisterForm: React.FC = () => {
             id="firstName"
             value={userData.firstName}
             onChange={(e) => setUserData({...userData, firstName: e.target.value})}
-            className="input w-full py-2"
+            className="input w-full py-1.5"
             placeholder="Унесите име"
             required
           />
@@ -119,7 +152,7 @@ const RegisterForm: React.FC = () => {
             id="lastName"
             value={userData.lastName}
             onChange={(e) => setUserData({...userData, lastName: e.target.value})}
-            className="input w-full py-2"
+            className="input w-full py-1.5"
             placeholder="Унесите презиме"
             required
           />
@@ -188,7 +221,7 @@ const RegisterForm: React.FC = () => {
             id="password"
             value={userData.password}
             onChange={(e) => setUserData({...userData, password: e.target.value})}
-            className="input w-full pr-10 py-2"
+            className="input w-full pr-10 py-1.5"
             placeholder="Креирајте сигурну лозинку"
             required
           />
@@ -221,7 +254,7 @@ const RegisterForm: React.FC = () => {
             id="confirmPassword"
             value={userData.confirmPassword}
             onChange={(e) => setUserData({...userData, confirmPassword: e.target.value})}
-            className="input w-full pr-10 py-2"
+            className="input w-full pr-10 py-1.5"
             placeholder="Поновите вашу лозинку за потврду"
             required
           />
@@ -282,6 +315,7 @@ const RegisterForm: React.FC = () => {
         )}
       </button>
     </form>
+    </>
   );
 };
 

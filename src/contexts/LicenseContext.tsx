@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { licenseService, LicenseInfo, LicenseCheckResponse } from '../services/licenseService';
 
@@ -24,6 +24,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasCheckedLicense = useRef(false);
 
   const checkLicense = useCallback(async () => {
     if (!user?.id || !token || !isAuthenticated) {
@@ -80,23 +81,31 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     } finally {
       setLoading(false);
     }
-  }, [user?.id, token, isAuthenticated, loading]);
+  }, [user?.id, token, isAuthenticated]);
 
   const refreshLicense = useCallback(async () => {
-    // Očisti cache pre refresh-a
+    // Očisti cache pre refresh-a samo ako je potrebno
     if (user?.id) {
       licenseService.clearUserLicenseCache(user.id);
     }
+    hasCheckedLicense.current = false;
     await checkLicense();
   }, [checkLicense, user?.id]);
 
   // Proveri licencu kada se korisnik uloguje ili kada se promeni user
   useEffect(() => {
     if (isAuthenticated && user?.id && token) {
-      // Očisti cache da se osigura da se učitaju najnoviji podaci
-      licenseService.clearUserLicenseCache(user.id);
-      checkLicense();
+      // Resetuj ref kada se promeni korisnik
+      if (hasCheckedLicense.current) {
+        hasCheckedLicense.current = false;
+      }
+      
+      if (!hasCheckedLicense.current) {
+        hasCheckedLicense.current = true;
+        checkLicense();
+      }
     } else {
+      hasCheckedLicense.current = false;
       setLicenseInfo(null);
       setError(null);
     }
@@ -137,14 +146,18 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     isExpiringSoon: false
   });
 
-  // Debug logovi za licence status
-  console.log('LicenseContext status:', {
-    licenseInfo,
-    isLicenseValid,
-    isLicenseExpired,
-    isLicenseExpiringSoon,
-    notificationSent: licenseInfo?.notificationSent
-  });
+  // Debug logovi za licence status - samo kada se promeni licenceInfo
+  useEffect(() => {
+    if (licenseInfo) {
+      console.log('LicenseContext status:', {
+        licenseInfo,
+        isLicenseValid,
+        isLicenseExpired,
+        isLicenseExpiringSoon,
+        notificationSent: licenseInfo?.notificationSent
+      });
+    }
+  }, [licenseInfo, isLicenseValid, isLicenseExpired, isLicenseExpiringSoon]);
 
   const getStatusMessage = useCallback(() => {
     if (!licenseInfo) {

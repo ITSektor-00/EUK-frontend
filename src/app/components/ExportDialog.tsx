@@ -55,7 +55,7 @@ export default function ExportDialog({ open, onClose, columns, data, selectedRow
     
     // Filter data to only include selected rows if any are selected
     let exportData = data;
-    if (selectedRows && selectedRows.length > 0) {
+    if (selectedRows && Array.isArray(selectedRows) && selectedRows.length > 0) {
       exportData = data.filter(item => {
         const itemId = (item as any).ugrozenoLiceId || (item as any).predmetId || (item as any).kategorijaId;
         return selectedRows.includes(itemId);
@@ -185,7 +185,7 @@ export default function ExportDialog({ open, onClose, columns, data, selectedRow
               <Typography variant="body2" color="text.secondary">
                 Изабрано колона: {selectedColumns.length} од {columns.length}
               </Typography>
-              {selectedRows && selectedRows.length > 0 && (
+              {selectedRows && Array.isArray(selectedRows) && selectedRows.length > 0 && (
                 <Typography variant="body2" color="primary" sx={{ ml: 2 }}>
                   • Означено редова: {selectedRows.length}
                 </Typography>

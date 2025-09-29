@@ -47,9 +47,6 @@ const UserApprovalPending: React.FC<UserApprovalPendingProps> = ({ onClose, user
           <p>
             Ваш налог је успешно креиран, али још увек чека одобрење од стране администратора.
           </p>
-          <p className="text-sm text-gray-500">
-            Бићете обавештени путем е-маила када ваш налог буде одобрен.
-          </p>
         </div>
 
         {/* Info Box */}
@@ -67,7 +64,6 @@ const UserApprovalPending: React.FC<UserApprovalPendingProps> = ({ onClose, user
               <div className="mt-1 text-sm text-blue-700">
                 <ul className="list-disc list-inside space-y-1">
                   <li>Сачекајте да администратор одобри ваш налог</li>
-                  <li>Проверите е-маил за обавештење о одобрењу</li>
                   <li>Покушајте поново да се пријавите када будете одобрени</li>
                 </ul>
               </div>

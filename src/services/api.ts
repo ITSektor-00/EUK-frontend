@@ -192,10 +192,32 @@ class ApiService {
         return { success: true, message: 'Operation completed successfully' };
       }
       
+      // Handle 200 OK with empty body (common for DELETE operations)
+      if (response.status === 200 && options.method === 'DELETE') {
+        const responseText = await response.text();
+        if (!responseText || responseText.trim() === '') {
+          return { success: true, message: 'User deleted successfully' };
+        }
+        // If there's content, try to parse it as JSON
+        try {
+          return JSON.parse(responseText);
+        } catch {
+          return { success: true, message: 'User deleted successfully', rawResponse: responseText };
+        }
+      }
+      
       try {
         data = await response.json();
       } catch (jsonError) {
-        throw new Error(`Server returned invalid JSON response. Status: ${response.status}`);
+        // Get response text for debugging
+        const responseText = await response.text();
+        console.error('Invalid JSON response:', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          responseText: responseText.substring(0, 500) // First 500 chars
+        });
+        throw new Error(`Server returned invalid JSON response. Status: ${response.status}. Response: ${responseText.substring(0, 100)}...`);
       }
       
       // Cache successful GET responses
@@ -602,6 +624,21 @@ class ApiService {
               message: 'Nalog nije odobren od strane administratora'
             };
           }
+          
+          // Poboljšano mapiranje 401 grešaka
+          if (errorData && errorData.errorCode) {
+            switch (errorData.errorCode) {
+              case 'INVALID_USERNAME_EMAIL':
+                throw new Error('Pogrešno korisničko ime/email pri prijavi');
+              case 'INVALID_PASSWORD':
+                throw new Error('Pogrešna lozinka');
+              case 'ACCOUNT_PENDING_APPROVAL':
+                throw new Error('Nalog čeka odobrenje');
+              default:
+                throw new Error('Neispravno korisničko ime ili lozinka');
+            }
+          }
+          
           throw new Error('Neispravno korisničko ime ili lozinka');
         } else if (response.status === 403) {
           // Specijalan status za neodobrene korisnike - vraćamo response umesto greške
@@ -612,6 +649,8 @@ class ApiService {
           };
         } else if (response.status === 429) {
           throw new Error('Previše pokušaja prijave. Molimo sačekajte malo');
+        } else if (response.status >= 500) {
+          throw new Error('Greška servera. Molimo pokušajte ponovo kasnije.');
         }
         
         throw new Error(errorData.message || 'Greška pri prijavi');
@@ -626,6 +665,10 @@ class ApiService {
 
       return data;
     } catch (error) {
+      // Hendlovanje network grešaka
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Greška konekcije sa serverom. Proverite internet konekciju.');
+      }
       throw error;
     }
   }
@@ -698,12 +741,14 @@ class ApiService {
     page?: number;
     role?: string;
     search?: string;
+    isActive?: boolean;
   }, useCache: boolean = true, cacheTTL: number = 60000) {
     const params = new URLSearchParams({
       page: (filters?.page !== undefined ? filters.page : page).toString(),
       size: size.toString(),
       ...(filters?.role && { role: filters.role }),
-      ...(filters?.search && { search: filters.search })
+      ...(filters?.search && { search: filters.search }),
+      ...(filters?.isActive !== undefined && { isActive: filters.isActive.toString() })
     });
     
     const endpoint = `/api/admin/users?${params.toString()}`;
@@ -765,9 +810,16 @@ class ApiService {
   }
 
   async deleteUser(userId: number, token: string) {
-    const result = await this.apiCall(`/api/admin/users/${userId}`, { method: 'DELETE' }, token, 3, false, 0); // 3 retries, no cache
-    this.clearCache('users'); // Clear user-related cache after deletion
-    return result;
+    try {
+      console.log(`Deleting user ${userId} with token:`, token ? 'present' : 'missing');
+      const result = await this.apiCall(`/api/admin/users/${userId}`, { method: 'DELETE' }, token, 3, false, 0); // 3 retries, no cache
+      console.log('Delete user result:', result);
+      this.clearCache('users'); // Clear user-related cache after deletion
+      return result;
+    } catch (error) {
+      console.error('Error in deleteUser:', error);
+      throw error;
+    }
   }
 
   // AdminController specific endpoints

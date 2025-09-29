@@ -24,10 +24,10 @@ export default function LoginPage() {
         
         <LoginForm />
         
-        <div className="subtle-divider my-3"></div>
+        <div className="subtle-divider my-2"></div>
         
         <div className="text-center">
-          <p className="text-gray-700 mb-2 text-sm">Немате налог?</p>
+          <p className="text-gray-700 mb-1 text-sm">Немате налог?</p>
           <div className={`flex ${isMobile ? 'flex-col gap-1' : 'gap-2'}`}>
             <button 
               onClick={() => router.push('/register')}

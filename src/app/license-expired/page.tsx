@@ -12,9 +12,9 @@ const LicenseExpiredPage: React.FC = () => {
 
   const handleContactAdmin = () => {
     // Otvori email klijent sa predloženim sadržajem
-    const subject = encodeURIComponent('Zahtev za produženje licence');
+    const subject = encodeURIComponent('Захтев за продужење лиценце');
     const body = encodeURIComponent(
-      `Poštovani,\n\nMolim Vas da produžite moju licencu za EUK Platformu.\n\nKorisničko ime: ${user?.username || 'Nepoznato'}\nEmail: ${user?.email || 'Nepoznato'}\n\nHvala unapred.\n\nS poštovanjem,\n${user?.firstName || ''} ${user?.lastName || ''}`
+      `Поштовани,\n\nМолим Вас да продужите лиценцу за ЕУК Платформу.\n\nКорисничко име: ${user?.username || 'Непознато'}\nЕмаил: ${user?.email || 'Непознато'}\n\nХвала унапред.\n\nС поштовањем,\n${user?.firstName || ''} ${user?.lastName || ''}`
     );
     
     window.location.href = `mailto:admin@euk.rs?subject=${subject}&body=${body}`;
@@ -25,7 +25,7 @@ const LicenseExpiredPage: React.FC = () => {
       await logout();
       router.push('/login');
     } catch (error) {
-      console.error('Greška pri odjavi:', error);
+      console.error('Грешка при одјави:', error);
       // Forsiraj odjavu čak i ako API poziv ne uspe
       localStorage.clear();
       sessionStorage.clear();
@@ -58,35 +58,24 @@ const LicenseExpiredPage: React.FC = () => {
 
           {/* Naslov */}
           <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Licenca je istekla
+            Лиценца је истекла
           </h1>
 
           {/* Poruka */}
           <div className="text-gray-600 mb-6 space-y-2">
             <p>
-              Vaša licenca za EUK Platformu je istekla.
+              Ваша лиценца за ЕУК Платформу је истекла.
             </p>
             {licenseInfo?.endDate && (
               <p className="text-sm">
-                Datum isteka: <span className="font-semibold">{getFormattedEndDate()}</span>
+                Датум истека: <span className="font-semibold">{getFormattedEndDate()}</span>
               </p>
             )}
             <p>
-              Molimo kontaktirajte administratora za produženje licence.
+              Молимо контактирајте администратора за продужење лиценце.
             </p>
           </div>
 
-          {/* Informacije o korisniku */}
-          {user && (
-            <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-              <h3 className="font-semibold text-gray-900 mb-2">Vaši podaci:</h3>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p><span className="font-medium">Korisničko ime:</span> {user.username}</p>
-                <p><span className="font-medium">Email:</span> {user.email}</p>
-                <p><span className="font-medium">Ime:</span> {user.firstName} {user.lastName}</p>
-              </div>
-            </div>
-          )}
 
           {/* Akcije */}
           <div className="space-y-3">
@@ -94,21 +83,21 @@ const LicenseExpiredPage: React.FC = () => {
               onClick={handleContactAdmin}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
             >
-              📧 Kontaktiraj administratora
+              📧 Контактирај администратора
             </button>
             
             <button
               onClick={handleLogout}
               className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
             >
-              🚪 Odjavi se
+              🚪 Одјави се
             </button>
           </div>
 
           {/* Footer */}
           <div className="mt-6 pt-4 border-t border-gray-200">
             <p className="text-xs text-gray-500">
-              EUK Platforma - Sistem za upravljanje socijalnom zaštitom
+              ЕУК Платформа - Систем за управљање социјалном заштитом
             </p>
           </div>
         </div>

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import UserApprovalPending from './UserApprovalPending';
+import AuthErrorPopup, { AuthError } from './AuthErrorPopup';
 
 const LoginForm: React.FC = () => {
   const { login } = useAuth();
@@ -17,6 +18,7 @@ const LoginForm: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showApprovalPending, setShowApprovalPending] = useState(false);
   const [pendingUsername, setPendingUsername] = useState('');
+  const [authError, setAuthError] = useState<AuthError | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,22 +40,27 @@ const LoginForm: React.FC = () => {
       // na osnovu role (admin -> /admin, obični korisnik -> /dashboard)
       router.push('/');
     } catch (error: unknown) {
-      // Poboljšana obrada grešaka
+      // Poboljšana obrada grešaka sa lepim popup-om
+      let authErrorType: AuthError['type'] = 'INVALID_CREDENTIALS';
       let errorMessage = 'Greška pri prijavi';
       
       if (error instanceof Error && error.message) {
-        // Mapiranje grešaka sa backend-a
+        // Mapiranje grešaka sa backend-a na AuthError tipove
         switch (error.message) {
           case 'Pogrešno korisničko ime/email pri prijavi':
+            authErrorType = 'USER_NOT_FOUND';
             errorMessage = 'Pogrešno korisničko ime ili email adresa';
             break;
           case 'Pogrešna lozinka':
+            authErrorType = 'INVALID_CREDENTIALS';
             errorMessage = 'Pogrešna lozinka';
             break;
           case 'Nalog je deaktiviran':
+            authErrorType = 'ACCOUNT_PENDING';
             errorMessage = 'Vaš nalog je deaktiviran. Kontaktirajte administratora.';
             break;
           case 'Neispravno korisničko ime ili lozinka':
+            authErrorType = 'INVALID_CREDENTIALS';
             errorMessage = 'Neispravno korisničko ime ili lozinka';
             break;
           case 'Korisničko ime već postoji':
@@ -63,10 +70,23 @@ const LoginForm: React.FC = () => {
             errorMessage = 'Email adresa već postoji';
             break;
           default:
+            // Proverava da li je network greška
+            if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('konekcija')) {
+              authErrorType = 'NETWORK_ERROR';
+            }
             errorMessage = error.message;
         }
       }
       
+      // Postavi AuthError za popup
+      setAuthError({
+        type: authErrorType,
+        message: errorMessage,
+        title: '', // Title će biti postavljen u AuthErrorPopup komponenti
+        icon: '' // Icon će biti postavljen u AuthErrorPopup komponenti
+      });
+      
+      // Zadržavamo i staru error logiku za slučaj da popup ne radi
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -85,7 +105,18 @@ const LoginForm: React.FC = () => {
         />
       )}
       
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {authError && (
+        <AuthErrorPopup 
+          error={authError}
+          onClose={() => setAuthError(null)}
+          onRetry={() => {
+            setAuthError(null);
+            setError('');
+          }}
+        />
+      )}
+      
+      <form onSubmit={handleSubmit} className="space-y-3">
       <div>
         <label htmlFor="usernameOrEmail" className="block text-sm font-medium text-gray-700 mb-1">
           Корисничко име или Email
