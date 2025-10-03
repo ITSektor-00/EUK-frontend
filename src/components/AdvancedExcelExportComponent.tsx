@@ -27,7 +27,9 @@ interface AdvancedExcelExportComponentProps {
 }
 
 const AdvancedExcelExportComponent: React.FC<AdvancedExcelExportComponentProps> = ({
-  baseUrl = 'http://localhost:8080',
+  baseUrl = process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:8080' 
+    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
   config = {},
   onExportComplete,
   onExportError,

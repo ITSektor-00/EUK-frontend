@@ -198,7 +198,7 @@ export default function UgrozenoLiceT2Page() {
       
       if (selectedIds && selectedIds.length > 0) {
         // Export filtered data
-        url = 'http://localhost:8080/api/export/dynamic/t2/filtered';
+        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic/t2/filtered`;
         options = {
           method: 'POST',
           headers: {
@@ -210,7 +210,7 @@ export default function UgrozenoLiceT2Page() {
         console.log(`📊 Exporting ${selectedIds.length} selected T2 records...`);
       } else {
         // Export all data
-        url = 'http://localhost:8080/api/export/dynamic/t2';
+        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic/t2`;
         options = {
           method: 'GET',
           headers: {

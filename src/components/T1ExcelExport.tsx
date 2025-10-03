@@ -8,7 +8,9 @@ interface T1ExcelExportProps {
 }
 
 const T1ExcelExport: React.FC<T1ExcelExportProps> = ({
-  baseUrl = 'http://localhost:8080',
+  baseUrl = process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:8080' 
+    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
   onExportComplete,
   onExportError
 }) => {

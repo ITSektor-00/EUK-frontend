@@ -415,7 +415,7 @@ export default function UgrozenaLicaPage() {
       
       if (selectedIds && selectedIds.length > 0) {
         // Export filtered data
-        url = 'http://localhost:8080/api/export/dynamic/filtered';
+        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic/filtered`;
         options = {
           method: 'POST',
           headers: {
@@ -427,7 +427,7 @@ export default function UgrozenaLicaPage() {
         console.log(`📊 Exporting ${selectedIds.length} selected records...`);
     } else {
         // Export all data
-        url = 'http://localhost:8080/api/export/dynamic';
+        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic`;
         options = {
           method: 'GET',
           headers: {
