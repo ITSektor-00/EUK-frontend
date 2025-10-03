@@ -35,7 +35,7 @@ export default function UrediUgrozenoLiceModal({
     ulicaIBroj: '',
     brojClanovaDomacinstva: undefined,
     osnovSticanjaStatusa: '',
-    edBrojBrojMernogUredjaja: '',
+    edBroj: '',
     potrosnjaIPovrsinaCombined: '',
     iznosUmanjenjaSaPdv: undefined,
     brojRacuna: '',
@@ -74,7 +74,7 @@ export default function UrediUgrozenoLiceModal({
         ulicaIBroj: ugrozenoLice.ulicaIBroj || '',
         brojClanovaDomacinstva: ugrozenoLice.brojClanovaDomacinstva,
         osnovSticanjaStatusa: ugrozenoLice.osnovSticanjaStatusa || '',
-        edBrojBrojMernogUredjaja: ugrozenoLice.edBrojBrojMernogUredjaja || '',
+        edBroj: ugrozenoLice.edBroj || '',
         potrosnjaIPovrsinaCombined: ugrozenoLice.potrosnjaIPovrsinaCombined || '',
         iznosUmanjenjaSaPdv: ugrozenoLice.iznosUmanjenjaSaPdv,
         brojRacuna: ugrozenoLice.brojRacuna || '',
@@ -332,8 +332,8 @@ export default function UrediUgrozenoLiceModal({
               </label>
               <input
                 type="text"
-                value={formData.edBrojBrojMernogUredjaja}
-                onChange={(e) => handleChange('edBrojBrojMernogUredjaja', e.target.value)}
+                value={formData.edBroj}
+                onChange={(e) => handleChange('edBroj', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="ED123456"
               />

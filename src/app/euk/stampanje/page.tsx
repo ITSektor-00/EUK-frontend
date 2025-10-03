@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { UgrozenoLiceT1, UgrozenoLiceResponse } from '../ugrozena-lica/types';
 import { UgrozenoLiceT2 } from '../ugrozeno-lice-t2/types';
-import { apiService } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { DataGrid, GridColDef, GridRenderCellParams, GridRowSelectionModel } from '@mui/x-data-grid';
 import { Paper } from '@mui/material';
@@ -35,6 +34,13 @@ const latinToCyrillic = (text: string): string => {
   }
   
   return result;
+};
+
+// DODAJ OVO NA VRH KOMPONENTE
+const getBaseURL = () => {
+  return process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:8080'
+    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
 };
 
 export default function StampanjePage() {
@@ -107,7 +113,9 @@ export default function StampanjePage() {
     mesto: '',
     osnovSticanjaStatusa: '',
     datumTrajanjaPravaOd: '',
-    datumTrajanjaPravaDo: ''
+    datumTrajanjaPravaDo: '',
+    edBrojT1: '', // T1 filter
+    edBroj: '' // T2 filter
   });
 
   // Pagination state
@@ -149,7 +157,7 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        const res = await fetch(`${apiService['baseURL']}/api/euk/ugrozena-lica?${params.toString()}`, {
+        const res = await fetch(`${getBaseURL()}/api/euk/ugrozena-lica-t1?${params.toString()}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -175,7 +183,13 @@ export default function StampanjePage() {
         }
       }
       
-      setUgrozenaLica(allUgrozenaLica);
+      // 🔧 Privremeno mapiranje: edBrojMernogUredjaja -> edBroj
+      const mappedData = allUgrozenaLica.map(item => ({
+        ...item,
+        edBroj: (item.edBrojMernogUredjaja || item.edBroj)?.toString() // Mapiraj edBrojMernogUredjaja na edBroj
+      }));
+      
+      setUgrozenaLica(mappedData);
     } catch (err) {
       console.error('Error fetching ugrozena lica:', err);
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
@@ -201,7 +215,17 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        const data = await apiService.getUgrozenaLicaT2(params.toString(), token!);
+        const res = await fetch(`${getBaseURL()}/api/euk/ugrozena-lica-t2?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP greška: ${res.status}`);
+        }
+        
+        const data = await res.json();
         const pageData = data.content || data;
         
         if (Array.isArray(pageData) && pageData.length > 0) {
@@ -229,7 +253,7 @@ export default function StampanjePage() {
 
   const generatePDF = async (lice: UgrozenoLiceT1) => {
     try {
-      const apiUrl = `${apiService['baseURL']}/api/generate-envelope-pdf`;
+      const apiUrl = `${getBaseURL()}/api/generate-envelope-pdf`;
       console.log('PDF URL:', apiUrl);
       console.log('PDF Request data:', {
         template: 'T1',
@@ -301,7 +325,7 @@ export default function StampanjePage() {
   // Funkcija za generisanje PDF-a zadnje strane koverte (T1)
   const generateBackSidePDF = async (lice: UgrozenoLiceT1) => {
     try {
-      const apiUrl = `${apiService['baseURL']}/api/generate-envelope-back-side-pdf`;
+      const apiUrl = `${getBaseURL()}/api/generate-envelope-back-side-pdf`;
       console.log('Back Side PDF URL:', apiUrl);
       console.log('Back Side PDF Request data:', {
         template: 'T1',
@@ -376,7 +400,7 @@ export default function StampanjePage() {
 
   const generateMultiplePDF = async (lica: UgrozenoLiceT1[]) => {
     try {
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+      const response = await fetch(`${getBaseURL()}/api/generate-envelope-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -442,7 +466,12 @@ export default function StampanjePage() {
         lice.ugrozenoLiceId && customSelectedIds.has(lice.ugrozenoLiceId)
       );
 
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+      const apiUrl = `${getBaseURL()}/api/generate-envelope-pdf`;
+      console.log('🔍 PDF Request URL:', apiUrl);
+      console.log('🔍 Environment:', process.env.NODE_ENV);
+      console.log('🔍 Base URL:', getBaseURL());
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -463,13 +492,17 @@ export default function StampanjePage() {
         })
       });
 
+      console.log('🔍 Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(`HTTP greška: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Backend error:', errorText);
+        throw new Error(`HTTP greška: ${response.status} - ${errorText}`);
       }
 
       const blob = await response.blob();
+      console.log('✅ PDF Blob size:', blob.size, 'bytes');
       
-      // Backend automatski generiše ime fajla u Content-Disposition header-u
       const contentDisposition = response.headers.get('Content-Disposition');
       const filename = contentDisposition
         ?.split('filename=')[1]
@@ -478,15 +511,16 @@ export default function StampanjePage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename; // Backend generisano ime
+      a.download = filename;
       a.click();
 
-    setTimeout(() => {
+      setTimeout(() => {
         URL.revokeObjectURL(url);
-    }, 1000);
+      }, 1000);
 
     } catch (error) {
-      console.error('Greška pri generisanju PDF-a:', error);
+      console.error('❌ Greška pri generisanju PDF-a:', error);
+      setToast({msg: `Greška pri generisanju PDF-a: ${error instanceof Error ? error.message : 'Nepoznata greška'}`, type: 'error'});
     }
   };
 
@@ -501,7 +535,7 @@ export default function StampanjePage() {
         lice.ugrozenoLiceId && customSelectedIds.has(lice.ugrozenoLiceId)
       );
 
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-back-side-pdf`, {
+      const response = await fetch(`${getBaseURL()}/api/generate-envelope-back-side-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -561,7 +595,7 @@ export default function StampanjePage() {
         lice.ugrozenoLiceId && customSelectedIdsT2.has(lice.ugrozenoLiceId)
       );
 
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+      const response = await fetch(`${getBaseURL()}/api/generate-envelope-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -620,7 +654,7 @@ export default function StampanjePage() {
         lice.ugrozenoLiceId && customSelectedIdsT2.has(lice.ugrozenoLiceId)
       );
 
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-back-side-pdf`, {
+      const response = await fetch(`${getBaseURL()}/api/generate-envelope-back-side-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -672,7 +706,7 @@ export default function StampanjePage() {
   // T2 functions
   const generatePDFT2 = async (lice: UgrozenoLiceT2) => {
     try {
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+      const response = await fetch(`${getBaseURL()}/api/generate-envelope-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -729,7 +763,7 @@ export default function StampanjePage() {
   // Funkcija za generisanje PDF-a zadnje strane koverte (T2)
   const generateBackSidePDFT2 = async (lice: UgrozenoLiceT2) => {
     try {
-      const apiUrl = `${apiService['baseURL']}/api/generate-envelope-back-side-pdf`;
+      const apiUrl = `${getBaseURL()}/api/generate-envelope-back-side-pdf`;
       console.log('Back Side PDF T2 URL:', apiUrl);
       console.log('Back Side PDF T2 Request data:', {
         template: 'T2',
@@ -802,7 +836,7 @@ export default function StampanjePage() {
 
   const generateMultiplePDFT2 = async (lica: UgrozenoLiceT2[]) => {
     try {
-      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+      const response = await fetch(`${getBaseURL()}/api/generate-envelope-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -941,8 +975,65 @@ export default function StampanjePage() {
       });
     }
     
+    if (filters.edBrojT1.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.edBroj?.toString().toLowerCase().includes(filters.edBrojT1.toLowerCase())
+      );
+    }
+    
     return filtered;
   }, [ugrozenaLica, filters]);
+
+  // Apply filtering to T2 data
+  const filteredDataT2 = useMemo(() => {
+    if (!ugrozenaLicaT2 || ugrozenaLicaT2.length === 0) return [];
+    let filtered = [...ugrozenaLicaT2];
+    
+    // Apply filters for T2
+    if (filters.redniBroj.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.redniBroj?.toLowerCase().includes(filters.redniBroj.toLowerCase())
+      );
+    }
+    
+    if (filters.ime.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.ime?.toLowerCase().includes(filters.ime.toLowerCase())
+      );
+    }
+    
+    if (filters.prezime.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.prezime?.toLowerCase().includes(filters.prezime.toLowerCase())
+      );
+    }
+    
+    if (filters.jmbg.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.jmbg?.toLowerCase().includes(filters.jmbg.toLowerCase())
+      );
+    }
+    
+    if (filters.gradOpstina.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.gradOpstina?.toLowerCase().includes(filters.gradOpstina.toLowerCase())
+      );
+    }
+    
+    if (filters.mesto.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.mesto?.toLowerCase().includes(filters.mesto.toLowerCase())
+      );
+    }
+    
+    if (filters.edBroj.trim()) {
+      filtered = filtered.filter(lice => 
+        lice.edBroj?.toString().toLowerCase().includes(filters.edBroj.toLowerCase())
+      );
+    }
+    
+    return filtered;
+  }, [ugrozenaLicaT2, filters]);
 
   // Apply pagination to filtered data
   const paginatedData = useMemo(() => {
@@ -1342,6 +1433,18 @@ export default function StampanjePage() {
                         />
                       </div>
 
+                      {/* ED Broj mernog uređaja - T1 */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">ЕД број мерног уређаја</label>
+                        <input
+                          type="text"
+                          placeholder="Претражи по ЕД броју мерног уређаја..."
+                          value={filters.edBrojT1}
+                          onChange={(e) => setFilters(prev => ({ ...prev, edBrojT1: e.target.value }))}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                        />
+                      </div>
+
                       {/* Action buttons */}
                       <div className="flex flex-col gap-2">
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Акције</label>
@@ -1356,7 +1459,9 @@ export default function StampanjePage() {
                               mesto: '',
                               osnovSticanjaStatusa: '',
                               datumTrajanjaPravaOd: '',
-                              datumTrajanjaPravaDo: ''
+                              datumTrajanjaPravaDo: '',
+                              edBrojT1: '',
+                              edBroj: ''
                             })}
                             className="flex-1 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-200 font-medium cursor-pointer text-sm"
                           >
@@ -1636,6 +1741,18 @@ export default function StampanjePage() {
                         />
                       </div>
 
+                      {/* ED Broj - T2 */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">ЕД број</label>
+                        <input
+                          type="text"
+                          placeholder="Претражи по ЕД броју..."
+                          value={filters.edBroj}
+                          onChange={(e) => setFilters(prev => ({ ...prev, edBroj: e.target.value }))}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
+                        />
+                      </div>
+
                       {/* Action buttons */}
                       <div className="flex flex-col gap-2">
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Акције</label>
@@ -1650,7 +1767,9 @@ export default function StampanjePage() {
                               mesto: '',
                               osnovSticanjaStatusa: '',
                               datumTrajanjaPravaOd: '',
-                              datumTrajanjaPravaDo: ''
+                              datumTrajanjaPravaDo: '',
+                              edBrojT1: '',
+                              edBroj: ''
                             })}
                             className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
                           >
@@ -1672,7 +1791,7 @@ export default function StampanjePage() {
               ) : (
                 <Paper className="w-full">
                   <DataGrid
-                    rows={ugrozenaLicaT2}
+                    rows={filteredDataT2}
                     columns={columnsWithSelectionT2}
                     getRowId={(row) => row.ugrozenoLiceId || Math.random()}
                     paginationModel={{ page: currentPage, pageSize: pageSize }}
@@ -1719,6 +1838,11 @@ export default function StampanjePage() {
                               <span className="text-sm text-gray-600">
                                 Укупно: <span className="font-semibold text-gray-800">{ugrozenaLicaT2.length}</span> угрожених лица Т2
                               </span>
+                              {filteredDataT2.length !== ugrozenaLicaT2.length && (
+                                <span className="text-sm text-blue-600">
+                                  Филтрирано: <span className="font-semibold text-gray-800">{filteredDataT2.length}</span>
+                                </span>
+                              )}
                               {customSelectedIdsT2.size > 0 && (
                                 <span className="text-sm text-blue-600">
                                   Означено: <span className="font-semibold">{customSelectedIdsT2.size}</span> за штампање
@@ -1752,11 +1876,11 @@ export default function StampanjePage() {
                                   Претходна
                                 </button>
                                 <span className="text-sm text-gray-600">
-                                  Страна {currentPage + 1} од {Math.ceil(ugrozenaLicaT2.length / pageSize)}
+                                  Страна {currentPage + 1} од {Math.ceil(filteredDataT2.length / pageSize)}
                                 </span>
                                 <button
                                   onClick={goToNextPage}
-                                  disabled={currentPage >= Math.ceil(ugrozenaLicaT2.length / pageSize) - 1}
+                                  disabled={currentPage >= Math.ceil(filteredDataT2.length / pageSize) - 1}
                                   className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   Следећа

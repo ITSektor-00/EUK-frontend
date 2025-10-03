@@ -27,9 +27,7 @@ interface AdvancedExcelExportComponentProps {
 }
 
 const AdvancedExcelExportComponent: React.FC<AdvancedExcelExportComponentProps> = ({
-  baseUrl = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
+  baseUrl = 'http://localhost:8080',
   config = {},
   onExportComplete,
   onExportError,
@@ -108,30 +106,27 @@ const AdvancedExcelExportComponent: React.FC<AdvancedExcelExportComponentProps> 
   const handleWebSocketMessage = useCallback((data: any) => {
     const { type, exportType, progress, error } = data;
     
-    if (type === 'export_progress' && exportType && (exportType === 't1' || exportType === 't2')) {
-      const validExportType = exportType as ExportType;
+    if (type === 'export_progress' && exportType) {
       setExportStatus(prev => ({
         ...prev,
-        [validExportType]: {
-          ...prev[validExportType],
-          progress: progress || prev[validExportType].progress
+        [exportType]: {
+          ...prev[exportType as keyof typeof prev],
+          progress: progress || prev[exportType as keyof typeof prev].progress
         }
       }));
-    } else if (type === 'export_complete' && exportType && (exportType === 't1' || exportType === 't2')) {
-      const validExportType = exportType as ExportType;
+    } else if (type === 'export_complete' && exportType) {
       setExportStatus(prev => ({
         ...prev,
-        [validExportType]: {
+        [exportType]: {
           isExporting: false,
           progress: createProgress(100, 100, 'complete'),
           error: undefined
         }
       }));
-    } else if (type === 'export_error' && exportType && (exportType === 't1' || exportType === 't2')) {
-      const validExportType = exportType as ExportType;
+    } else if (type === 'export_error' && exportType) {
       setExportStatus(prev => ({
         ...prev,
-        [validExportType]: {
+        [exportType]: {
           isExporting: false,
           progress: createProgress(0, 100, 'preparing'),
           error: error || 'Nepoznata greška'

@@ -107,7 +107,7 @@ Kompletan frontend za **EUK-T2 Ugrozena Lica** sa svim izvoznim i uvoznim funkci
 POST http://localhost:8080/api/import/excel
 Body: FormData {
   file: File,
-  tableName: 'euk.ugrozeno_lice_t2'
+  table: 'euk.ugrozeno_lice_t2'
 }
 
 // Export ALL

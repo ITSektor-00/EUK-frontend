@@ -51,6 +51,8 @@ export default function UgrozenaLicaPage() {
   // Simple import state
   const [isImporting, setIsImporting] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [importResult, setImportResult] = useState<{
     processedRecords: number;
     totalRecords: number;
@@ -149,8 +151,14 @@ export default function UgrozenaLicaPage() {
         }
       }
       
-      console.log(`✨ Total records loaded: ${allUgrozenaLica.length}`);
-      setUgrozenaLica(allUgrozenaLica);
+      
+      // Mapiranje ED broja
+      const mappedData = allUgrozenaLica.map(item => ({
+        ...item,
+        edBroj: (item.edBroj || item.edBrojMernogUredjaja || item.edBrojBrojMernogUredjaja)?.toString() || ''
+      }));
+      
+      setUgrozenaLica(mappedData);
     } catch (err) {
       console.error('❌ Error fetching ugrozena lica:', err);
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
@@ -187,7 +195,7 @@ export default function UgrozenaLicaPage() {
       if (filters.gradOpstina.trim()) serverFilters.gradOpstina = filters.gradOpstina.trim();
       if (filters.mesto.trim()) serverFilters.mesto = filters.mesto.trim();
       if (filters.osnovSticanjaStatusa.trim()) serverFilters.osnovStatusa = filters.osnovSticanjaStatusa.trim(); // Backend očekuje 'osnovStatusa'
-      if (filters.edBrojBrojMernogUredjaja.trim()) serverFilters.edBrojBrojMernogUredjaja = filters.edBrojBrojMernogUredjaja.trim();
+      if (filters.edBroj.trim()) serverFilters.edBroj = filters.edBroj.trim();
       if (filters.datumTrajanjaPravaOd.trim()) serverFilters.datumTrajanjaPravaOd = filters.datumTrajanjaPravaOd.trim();
       if (filters.datumTrajanjaPravaDo.trim()) serverFilters.datumTrajanjaPravaDo = filters.datumTrajanjaPravaDo.trim();
       
@@ -195,14 +203,17 @@ export default function UgrozenaLicaPage() {
       serverFilters.size = 50000; // Backend max size
       serverFilters.page = 0;
       
-      console.log('Sending filters to server for full database search:', serverFilters);
-      
       // Koristi napredni filter endpoint za server-side pretragu kroz celu bazu
       const searchResults = await apiService.searchUgrozenoLiceByFilters(serverFilters, token);
       const ugrozenaLicaData = searchResults.content || searchResults;
-      setUgrozenaLica(ugrozenaLicaData);
       
-      console.log('Server returned:', ugrozenaLicaData.length, 'results from full database search');
+      // Mapiranje ED broja i za search rezultate
+      const mappedSearchData = ugrozenaLicaData.map((item: any) => ({
+        ...item,
+        edBroj: (item.edBroj || item.edBrojMernogUredjaja || item.edBrojBrojMernogUredjaja)?.toString() || ''
+      }));
+      
+      setUgrozenaLica(mappedSearchData);
     } catch (err) {
       console.error('Error in filter search:', err);
       setError(err instanceof Error ? err.message : 'Greška pri pretrazi');
@@ -325,15 +336,15 @@ export default function UgrozenaLicaPage() {
   const handleImport = async (file: File) => {
     try {
       setIsImporting(true);
-      
-      console.log('Sending Excel file to backend via /api/import/excel...');
+      setShowErrorPopup(false);
+      setErrorMessage('');
       
       // Send original Excel file directly as MultipartFile
       const formData = new FormData();
       formData.append('file', file);
       formData.append('table', 'euk.ugrozeno_lice_t1');
       
-      const response = await fetch('http://localhost:8080/api/import/excel', {
+      const response = await fetch('/api/import/excel', {
         method: 'POST',
         body: formData,
         headers: {
@@ -342,12 +353,13 @@ export default function UgrozenaLicaPage() {
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Import failed: ${response.status} ${response.statusText} - ${errorText}`);
+        const errorData = await response.json();
+        setErrorMessage(errorData.error || 'Greška pri importu fajla');
+        setShowErrorPopup(true);
+        return;
       }
       
       const result = await response.json();
-      console.log('Import response:', result);
       
       // Check if import was successful
       if (result.status === 'SUCCESS') {
@@ -365,15 +377,14 @@ export default function UgrozenaLicaPage() {
         // Show success popup with actual data
         setShowSuccessPopup(true);
         setTimeout(() => setShowSuccessPopup(false), 3000);
-        
-        console.log(`✅ Import completed: ${result.processedRecords}/${result.totalRecords} records in ${result.processingTimeMs}ms`);
       } else {
-        throw new Error(result.message || 'Import failed');
+        setErrorMessage(result.message || 'Import failed');
+        setShowErrorPopup(true);
       }
       
     } catch (error) {
-      console.error('Import error:', error);
-      // Silent error handling - no alerts
+      setErrorMessage('Greška pri komunikaciji sa serverom');
+      setShowErrorPopup(true);
     } finally {
       setIsImporting(false);
     }
@@ -415,7 +426,7 @@ export default function UgrozenaLicaPage() {
       
       if (selectedIds && selectedIds.length > 0) {
         // Export filtered data
-        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic/filtered`;
+        url = 'http://localhost:8080/api/export/dynamic/filtered';
         options = {
           method: 'POST',
           headers: {
@@ -427,7 +438,7 @@ export default function UgrozenaLicaPage() {
         console.log(`📊 Exporting ${selectedIds.length} selected records...`);
     } else {
         // Export all data
-        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic`;
+        url = 'http://localhost:8080/api/export/dynamic';
         options = {
           method: 'GET',
           headers: {
@@ -619,10 +630,15 @@ export default function UgrozenaLicaPage() {
       }
     },
     { 
-      field: 'edBrojBrojMernogUredjaja', 
+      field: 'edBroj', 
       headerName: 'ед број', 
       width: 120,
-      renderHeader: () => renderSimpleHeader('ед број')
+      renderHeader: () => renderSimpleHeader('ед број'),
+      renderCell: (params: GridRenderCellParams) => (
+        <span className="text-sm">
+          {params.value || '-'}
+        </span>
+      )
     },
     { 
       field: 'potrosnjaIPovrsinaCombined', 
@@ -717,7 +733,7 @@ export default function UgrozenaLicaPage() {
     gradOpstina: '',
     mesto: '',
     osnovSticanjaStatusa: '',
-    edBrojBrojMernogUredjaja: '',  // 🆕 NOVO - ED broj
+    edBroj: '',  // 🆕 NOVO - ED broj
     datumTrajanjaPravaOd: '',  // 🆕 NOVO
     datumTrajanjaPravaDo: ''   // 🆕 NOVO
   });
@@ -839,6 +855,7 @@ export default function UgrozenaLicaPage() {
           {error && (
             <ErrorHandler error={error} onRetry={fetchUgrozenaLica} />
           )}
+
 
           {/* Tab Navigation */}
           <div className="mb-6">
@@ -1100,8 +1117,8 @@ export default function UgrozenaLicaPage() {
                           <input
                             type="text"
                             placeholder="Претражи по ЕД броју..."
-                            value={filters.edBrojBrojMernogUredjaja}
-                            onChange={(e) => setFilters(prev => ({ ...prev, edBrojBrojMernogUredjaja: e.target.value }))}
+                            value={filters.edBroj}
+                            onChange={(e) => setFilters(prev => ({ ...prev, edBroj: e.target.value }))}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
                           />
                         </div>
@@ -1142,7 +1159,7 @@ export default function UgrozenaLicaPage() {
                                 gradOpstina: '',
                                 mesto: '',
                                 osnovSticanjaStatusa: '',
-                                edBrojBrojMernogUredjaja: '',
+                                edBroj: '',
                                 datumTrajanjaPravaOd: '',
                                 datumTrajanjaPravaDo: ''
                               })}
@@ -1356,6 +1373,31 @@ export default function UgrozenaLicaPage() {
                   <div className="text-xs text-green-200">
                     {importResult.filename} • {(importResult.processingTimeMs / 1000).toFixed(1)}s
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error Popup */}
+          {showErrorPopup && (
+            <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right-5 duration-300">
+              <div className="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-start gap-3 max-w-md">
+                <div className="w-6 h-6 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold">Грешка при увозу</div>
+                  <div className="text-sm text-red-100 mt-1">
+                    {errorMessage}
+                  </div>
+                  <button
+                    onClick={() => setShowErrorPopup(false)}
+                    className="text-red-200 hover:text-white text-xs font-medium underline mt-2"
+                  >
+                    Затвори
+                  </button>
                 </div>
               </div>
             </div>

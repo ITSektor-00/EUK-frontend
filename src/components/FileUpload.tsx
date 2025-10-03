@@ -13,7 +13,7 @@ interface FileUploadProps {
 export default function FileUpload({
   onUploadComplete,
   onUploadError,
-  uploadUrl = "http://localhost:8080/api/import/excel",
+  uploadUrl = "/api/import/excel",
   acceptedTypes = ".xlsx,.xls",
   maxFileSize = 10 // 10MB default
 }: FileUploadProps) {

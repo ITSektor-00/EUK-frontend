@@ -8,9 +8,7 @@ interface T1ExcelExportProps {
 }
 
 const T1ExcelExport: React.FC<T1ExcelExportProps> = ({
-  baseUrl = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
+  baseUrl = 'http://localhost:8080',
   onExportComplete,
   onExportError
 }) => {
@@ -23,15 +21,16 @@ const T1ExcelExport: React.FC<T1ExcelExportProps> = ({
     setProgress(0);
     setError(null);
 
-    // Simulacija progress-a
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        const newProgress = Math.min(prev + Math.random() * 15, 90);
-        return newProgress;
-      });
-    }, 200);
+    let progressInterval: NodeJS.Timeout | null = null;
 
     try {
+      // Simulacija progress-a
+      progressInterval = setInterval(() => {
+        setProgress(prev => {
+          const newProgress = Math.min(prev + Math.random() * 15, 90);
+          return newProgress;
+        });
+      }, 200);
 
       const response = await fetch(`${baseUrl}/api/export/excel/t1`);
       
@@ -39,7 +38,9 @@ const T1ExcelExport: React.FC<T1ExcelExportProps> = ({
         throw new Error(`Greška pri izvozu T1 tabele: ${response.status} ${response.statusText}`);
       }
 
-      clearInterval(progressInterval);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
       setProgress(100);
 
       const blob = await response.blob();
@@ -65,7 +66,9 @@ const T1ExcelExport: React.FC<T1ExcelExportProps> = ({
       }, 1000);
 
     } catch (error: any) {
-      clearInterval(progressInterval);
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
       const errorMessage = error.message || 'Nepoznata greška';
       setError(errorMessage);
       setIsExporting(false);

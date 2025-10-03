@@ -203,9 +203,7 @@ export interface ExcelImportConfig {
 
 // Default configuration
 export const DEFAULT_IMPORT_CONFIG: ExcelImportConfig = {
-  baseUrl: process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
+  baseUrl: 'http://localhost:8080',
   timeout: 300000, // 5 minutes
   retryAttempts: 3,
   retryDelay: 1000, // 1 second

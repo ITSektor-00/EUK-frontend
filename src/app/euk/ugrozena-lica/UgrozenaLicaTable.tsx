@@ -34,7 +34,7 @@ const COLUMN_LABELS: Record<string, string> = {
   ulicaIBroj: 'Ulica i broj',
   brojClanovaDomacinstva: 'Broj članova domaćinstva',
   osnovSticanjaStatusa: 'Osnov sticanja statusa',
-  edBrojBrojMernogUredjaja: 'ED broj/broj mernog uređaja',
+  edBroj: 'ED broj',
   potrosnjaKwh: 'Potrošnja (kWh)',
   zagrevanaPovrsinaM2: 'Zagrevana površina (m²)',
   iznosUmanjenjaSaPdv: 'Iznos umanjenja sa PDV',
@@ -203,14 +203,14 @@ export default function UgrozenaLicaTable({
                     <Button
                       variant="outline"
                       onClick={() => onEdit(ugrozenoLice)}
-                      className="text-blue-600 hover:text-blue-900"
+                      className="text-blue-600 hover:text-blue-900 text-sm px-3 py-1"
                     >
                       Uredi
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => ugrozenoLice.ugrozenoLiceId && onDelete(ugrozenoLice.ugrozenoLiceId)}
-                      className="text-red-600 hover:text-red-900"
+                      className="text-red-600 hover:text-red-900 text-sm px-3 py-1"
                     >
                       Obriši
                     </Button>

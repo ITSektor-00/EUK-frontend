@@ -38,7 +38,7 @@ export default function NovoUgrozenoLiceModal({
     ulicaIBroj: '',
     brojClanovaDomacinstva: undefined,
     osnovSticanjaStatusa: '',
-    edBrojBrojMernogUredjaja: '',
+    edBroj: '',
     potrosnjaIPovrsinaCombined: '',
     iznosUmanjenjaSaPdv: undefined,
     brojRacuna: '',
@@ -84,7 +84,7 @@ export default function NovoUgrozenoLiceModal({
         ulicaIBroj: editingUgrozenoLice.ulicaIBroj || '',
         brojClanovaDomacinstva: editingUgrozenoLice.brojClanovaDomacinstva || undefined,
         osnovSticanjaStatusa: editingUgrozenoLice.osnovSticanjaStatusa || '',
-        edBrojBrojMernogUredjaja: editingUgrozenoLice.edBrojBrojMernogUredjaja || '',
+        edBroj: editingUgrozenoLice.edBroj || '',
         potrosnjaIPovrsinaCombined: editingUgrozenoLice.potrosnjaIPovrsinaCombined || '',
         iznosUmanjenjaSaPdv: editingUgrozenoLice.iznosUmanjenjaSaPdv || undefined,
         brojRacuna: editingUgrozenoLice.brojRacuna || '',
@@ -108,7 +108,7 @@ export default function NovoUgrozenoLiceModal({
       ulicaIBroj: '',
       brojClanovaDomacinstva: undefined,
       osnovSticanjaStatusa: '',
-      edBrojBrojMernogUredjaja: '',
+      edBroj: '',
       potrosnjaIPovrsinaCombined: '',
       iznosUmanjenjaSaPdv: undefined,
       brojRacuna: '',
@@ -486,8 +486,8 @@ export default function NovoUgrozenoLiceModal({
               <label className="block text-sm font-semibold text-gray-700 mb-2">ЕД број/број мерног уређаја</label>
               <input
                 type="text"
-                value={formData.edBrojBrojMernogUredjaja}
-                onChange={(e) => handleChange('edBrojBrojMernogUredjaja', e.target.value)}
+                value={formData.edBroj}
+                onChange={(e) => handleChange('edBroj', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 placeholder="Унесите ЕД број"
               />

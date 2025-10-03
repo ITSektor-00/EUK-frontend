@@ -42,7 +42,7 @@ const SimpleExcelHandler: React.FC<SimpleExcelHandlerProps> = ({
       // ✅ Novi (ispravan) endpoint: POST /api/import/excel
       formData.append('table', 'euk.ugrozeno_lice_t1');
 
-      const response = await fetch(`${baseUrl}/api/import/excel`, {
+      const response = await fetch('/api/import/excel', {
         method: 'POST',
         body: formData,
         headers: {

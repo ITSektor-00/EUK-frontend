@@ -38,6 +38,8 @@ export default function UgrozenoLiceT2Page() {
   // Simple import state
   const [isImporting, setIsImporting] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [importResult, setImportResult] = useState<{
     processedRecords: number;
     totalRecords: number;
@@ -198,7 +200,7 @@ export default function UgrozenoLiceT2Page() {
       
       if (selectedIds && selectedIds.length > 0) {
         // Export filtered data
-        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic/t2/filtered`;
+        url = 'http://localhost:8080/api/export/dynamic/t2/filtered';
         options = {
           method: 'POST',
           headers: {
@@ -210,7 +212,7 @@ export default function UgrozenoLiceT2Page() {
         console.log(`📊 Exporting ${selectedIds.length} selected T2 records...`);
       } else {
         // Export all data
-        url = `${process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'}/api/export/dynamic/t2`;
+        url = 'http://localhost:8080/api/export/dynamic/t2';
         options = {
           method: 'GET',
           headers: {
@@ -268,15 +270,15 @@ export default function UgrozenoLiceT2Page() {
   const handleImport = async (file: File) => {
     try {
       setIsImporting(true);
-      
-      console.log('Sending Excel file to backend via /api/import/excel...');
+      setShowErrorPopup(false);
+      setErrorMessage('');
       
       // Send original Excel file directly as MultipartFile
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('tableName', 'euk.ugrozeno_lice_t2'); // 🔴 VAŽNO ZA T2!
+      formData.append('table', 'euk.ugrozeno_lice_t2'); // 🔴 VAŽNO ZA T2!
       
-      const response = await fetch('http://localhost:8080/api/import/excel', {
+      const response = await fetch('/api/import/excel', {
         method: 'POST',
         body: formData,
         headers: {
@@ -285,12 +287,13 @@ export default function UgrozenoLiceT2Page() {
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Import failed: ${response.status} ${response.statusText} - ${errorText}`);
+        const errorData = await response.json();
+        setErrorMessage(errorData.error || 'Greška pri importu fajla');
+        setShowErrorPopup(true);
+        return;
       }
       
       const result = await response.json();
-      console.log('Import response:', result);
       
       // Check if import was successful
       if (result.status === 'SUCCESS') {
@@ -303,20 +306,19 @@ export default function UgrozenoLiceT2Page() {
         });
         
         // Refresh data
-      await fetchUgrozenaLicaT2();
+        await fetchUgrozenaLicaT2();
         
         // Show success popup with actual data
         setShowSuccessPopup(true);
         setTimeout(() => setShowSuccessPopup(false), 3000);
-        
-        console.log(`✅ Import completed: ${result.processedRecords}/${result.totalRecords} records in ${result.processingTimeMs}ms`);
       } else {
-        throw new Error(result.message || 'Import failed');
+        setErrorMessage(result.message || 'Import failed');
+        setShowErrorPopup(true);
       }
       
     } catch (error) {
-      console.error('Import error:', error);
-      // Silent error handling - no alerts
+      setErrorMessage('Greška pri komunikaciji sa serverom');
+      setShowErrorPopup(true);
     } finally {
       setIsImporting(false);
     }
@@ -915,6 +917,31 @@ export default function UgrozenoLiceT2Page() {
                   <div className="text-xs text-green-200">
                     {importResult.filename} • {(importResult.processingTimeMs / 1000).toFixed(1)}s
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error Popup */}
+          {showErrorPopup && (
+            <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right-5 duration-300">
+              <div className="bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-start gap-3 max-w-md">
+                <div className="w-6 h-6 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold">Грешка при увозу</div>
+                  <div className="text-sm text-red-100 mt-1">
+                    {errorMessage}
+                  </div>
+                  <button
+                    onClick={() => setShowErrorPopup(false)}
+                    className="text-red-200 hover:text-white text-xs font-medium underline mt-2"
+                  >
+                    Затвори
+                  </button>
                 </div>
               </div>
             </div>

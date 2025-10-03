@@ -129,9 +129,7 @@ export interface TemplateConfig {
 
 // Export konfiguracija
 export const DEFAULT_EXPORT_CONFIG: ExportConfig = {
-  baseUrl: process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
+  baseUrl: 'http://localhost:8080',
   timeout: 30000, // 30 seconds
   retryAttempts: 3,
   progressInterval: 200

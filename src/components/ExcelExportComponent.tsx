@@ -14,9 +14,7 @@ interface ExcelExportComponentProps {
 }
 
 const ExcelExportComponent: React.FC<ExcelExportComponentProps> = ({
-  baseUrl = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'),
+  baseUrl = 'http://localhost:8080',
   onExportComplete,
   onExportError
 }) => {

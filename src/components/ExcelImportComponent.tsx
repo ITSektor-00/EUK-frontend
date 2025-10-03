@@ -126,7 +126,7 @@ const ExcelImportComponent: React.FC<ExcelImportComponentProps> = ({
       setIsImporting(true);
       setError('');
       
-      const response = await fetch(`${baseUrl}/api/import/excel`, {
+      const response = await fetch('/api/import/excel', {
         method: 'POST',
         body: formData
       });

@@ -10,7 +10,8 @@ export interface UgrozenoLiceT1 {
   ulicaIBroj?: string;
   brojClanovaDomacinstva?: number;
   osnovSticanjaStatusa?: string; // MP, NSP, DD, UDTNP
-  edBrojBrojMernogUredjaja?: string;
+  edBroj?: string;
+  edBrojMernogUredjaja?: string; // Backend compatibility
   potrosnjaKwh?: number;
   zagrevanaPovrsinaM2?: number;
   potrosnjaIPovrsinaCombined?: string;  // 🆕 NOVA KOLONA - kombinuje potrosnjaKwh i zagrevanaPovrsinaM2
@@ -34,7 +35,8 @@ export interface UgrozenoLiceFormData {
   ulicaIBroj?: string;
   brojClanovaDomacinstva?: number;
   osnovSticanjaStatusa?: string;
-  edBrojBrojMernogUredjaja?: string;
+  edBroj?: string;
+  edBrojMernogUredjaja?: string; // Backend compatibility
   potrosnjaKwh?: number;
   zagrevanaPovrsinaM2?: number;
   potrosnjaIPovrsinaCombined?: string;  // 🆕 NOVA KOLONA - kombinuje potrosnjaKwh i zagrevanaPovrsinaM2
