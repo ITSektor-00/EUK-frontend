@@ -10,6 +10,7 @@ import { webSocketService } from '../../../services/websocketService';
 import NovoUgrozenoLiceModal from './NovoUgrozenoLiceModal';
 import UgrozenaLicaStatistika from './UgrozenaLicaStatistika';
 import UrediUgrozenoLiceModal from './UrediUgrozenoLiceModal';
+import T1ExcelExport from '../../../components/T1ExcelExport';
 // Material UI Imports
 import {
   Paper,
@@ -22,6 +23,8 @@ import { Add, FileDownload, FileUpload } from '@mui/icons-material';
 // Export imports
 import { mkConfig, generateCsv, download } from 'export-to-csv';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import ExportDialog from '../../components/ExportDialog';
 
 import { UgrozenoLiceT1, UgrozenoLiceFormData, UgrozenoLiceResponse } from './types';
@@ -46,24 +49,77 @@ export default function UgrozenaLicaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [importProgress, setImportProgress] = useState({
+    isImporting: false,
+    current: 0,
+    total: 0,
+    percentage: 0,
+    estimatedTime: 0,
+    successCount: 0,
+    errorCount: 0
+  });
+  const [cancelImport, setCancelImport] = useState(false);
   
 
-  // Simple import state
-  const [isImporting, setIsImporting] = useState(false);
-  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    processedRecords: number;
-    totalRecords: number;
-    processingTimeMs: number;
-    filename: string;
-  } | null>(null);
+  // Poll batch progress function
+  const pollBatchProgress = async (batchId: string, batchNumber: number, totalBatches: number) => {
+    const maxAttempts = 60; // 30 seconds max (500ms * 60)
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const progress = await apiService.getUgrozenoLiceBatchProgress(batchId, token!);
+        console.log(`Batch ${batchNumber} progress:`, progress);
+        
+        // Update progress state
+        setImportProgress(prev => ({
+          ...prev,
+          successCount: prev.successCount + (progress.successRecords || 0),
+          errorCount: prev.errorCount + (progress.errorRecords || 0),
+          current: batchNumber,
+          percentage: Math.round((batchNumber / totalBatches) * 100),
+          estimatedTime: Math.round((totalBatches - batchNumber) * 0.2)
+        }));
+        
+        // If completed or error, stop polling
+        if (progress.status === 'COMPLETED' || progress.status === 'ERROR') {
+          console.log(`Batch ${batchNumber} finished with status: ${progress.status}`);
+          break;
+        }
+      } catch (error) {
+        console.error(`Error polling batch ${batchNumber} progress:`, error);
+      }
+      
+      attempts++;
+      await new Promise(resolve => setTimeout(resolve, 500)); // Poll every 500ms
+    }
+    
+    if (attempts >= maxAttempts) {
+      console.warn(`Batch ${batchNumber} polling timeout after ${maxAttempts} attempts`);
+    }
+  };
 
+  // Prevent ESC key from closing modal during import
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (importProgress.isImporting && e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    if (importProgress.isImporting) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [importProgress.isImporting]);
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [editingUgrozenoLice, setEditingUgrozenoLice] = useState<UgrozenoLiceT1 | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showExcelExport, setShowExcelExport] = useState(false);
   
   // Sort configuration
   const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
@@ -116,7 +172,6 @@ export default function UgrozenaLicaPage() {
     setError(null);
     
     try {
-      console.log('📊 Fetching ugrozena lica from backend...');
       
       // Učitaj sve podatke kroz više stranica da pokrijemo celu bazu
       let allUgrozenaLica: UgrozenoLiceT1[] = [];
@@ -128,11 +183,8 @@ export default function UgrozenaLicaPage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        console.log(`📄 Fetching page ${currentPage + 1} (size: 1000)...`);
         const data = await apiService.getUgrozenaLica(params.toString(), token!);
         const pageData = data.content || data;
-        
-        console.log(`✅ Page ${currentPage + 1} received: ${Array.isArray(pageData) ? pageData.length : 0} records`);
         
         if (Array.isArray(pageData) && pageData.length > 0) {
           allUgrozenaLica = [...allUgrozenaLica, ...pageData];
@@ -140,19 +192,16 @@ export default function UgrozenaLicaPage() {
           
           // Ako je broj rezultata manji od size, to je poslednja stranica
           if (pageData.length < 1000) {
-            console.log(`🏁 Last page reached (${pageData.length} < 1000)`);
             hasMoreData = false;
           }
           } else {
-          console.log('🛑 No more data available');
           hasMoreData = false;
         }
       }
       
-      console.log(`✨ Total records loaded: ${allUgrozenaLica.length}`);
       setUgrozenaLica(allUgrozenaLica);
     } catch (err) {
-      console.error('❌ Error fetching ugrozena lica:', err);
+      console.error('Error fetching ugrozena lica:', err);
       setError(err instanceof Error ? err.message : 'Greška pri učitavanju');
     } finally {
       if (showLoading) setLoading(false);
@@ -186,14 +235,9 @@ export default function UgrozenaLicaPage() {
       if (filters.jmbg.trim()) serverFilters.jmbg = filters.jmbg.trim();
       if (filters.gradOpstina.trim()) serverFilters.gradOpstina = filters.gradOpstina.trim();
       if (filters.mesto.trim()) serverFilters.mesto = filters.mesto.trim();
-      if (filters.osnovSticanjaStatusa.trim()) serverFilters.osnovStatusa = filters.osnovSticanjaStatusa.trim(); // Backend očekuje 'osnovStatusa'
-      if (filters.edBrojBrojMernogUredjaja.trim()) serverFilters.edBrojBrojMernogUredjaja = filters.edBrojBrojMernogUredjaja.trim();
+      if (filters.osnovSticanjaStatusa.trim()) serverFilters.osnovSticanjaStatusa = filters.osnovSticanjaStatusa.trim();
       if (filters.datumTrajanjaPravaOd.trim()) serverFilters.datumTrajanjaPravaOd = filters.datumTrajanjaPravaOd.trim();
       if (filters.datumTrajanjaPravaDo.trim()) serverFilters.datumTrajanjaPravaDo = filters.datumTrajanjaPravaDo.trim();
-      
-      // Dodaj size parametar za pretragu cele baze
-      serverFilters.size = 50000; // Backend max size
-      serverFilters.page = 0;
       
       console.log('Sending filters to server for full database search:', serverFilters);
       
@@ -324,14 +368,31 @@ export default function UgrozenaLicaPage() {
   // Export functions
   const handleImport = async (file: File) => {
     try {
-      setIsImporting(true);
+      setLoading(true);
+      setShowImportProgress(true);
+      setImportProgress({
+        total: 1,
+        current: 0,
+        percentage: 0,
+        successCount: 0,
+        errorCount: 0,
+        estimatedTime: 5
+      });
       
-      console.log('Sending Excel file to backend via /api/import/excel...');
+      console.log('Sending Excel file directly to backend...');
       
       // Send original Excel file directly as MultipartFile
       const formData = new FormData();
       formData.append('file', file);
       formData.append('table', 'euk.ugrozeno_lice_t1');
+      
+      // Update progress
+      setImportProgress(prev => ({
+        ...prev,
+        current: 1,
+        percentage: 50,
+        message: 'Šalje se Excel fajl na backend...'
+      }));
       
       const response = await fetch('http://localhost:8080/api/import/excel', {
         method: 'POST',
@@ -342,174 +403,290 @@ export default function UgrozenaLicaPage() {
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Import failed: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`Import failed: ${response.status} ${response.statusText}`);
       }
       
       const result = await response.json();
-      console.log('Import response:', result);
       
-      // Check if import was successful
-      if (result.status === 'SUCCESS') {
-        // Store import result
-        setImportResult({
-          processedRecords: result.processedRecords,
-          totalRecords: result.totalRecords,
-          processingTimeMs: result.processingTimeMs,
-          filename: result.filename
-        });
-        
-        // Refresh data
-        await fetchUgrozenaLica();
-        
-        // Show success popup with actual data
-        setShowSuccessPopup(true);
-        setTimeout(() => setShowSuccessPopup(false), 3000);
-        
-        console.log(`✅ Import completed: ${result.processedRecords}/${result.totalRecords} records in ${result.processingTimeMs}ms`);
-      } else {
-        throw new Error(result.message || 'Import failed');
-      }
+      // Update progress
+      setImportProgress(prev => ({
+        ...prev,
+        percentage: 100,
+        successCount: result.processed || 0,
+        message: 'Import završen!'
+      }));
+      
+      console.log(`✅ Import completed: ${result.processed || 0} records processed`);
+      setMessage(`✅ Import završen! ${result.processed || 0} zapisa je uspešno importovano.`);
+      
+      // Refresh data
+      await fetchData();
       
     } catch (error) {
       console.error('Import error:', error);
-      // Silent error handling - no alerts
+      setMessage(`❌ Greška pri importu: ${error instanceof Error ? error.message : 'Nepoznata greška'}`);
     } finally {
-      setIsImporting(false);
+      setLoading(false);
+      setShowImportProgress(false);
     }
   };
-
-  // Backend Excel export sa template-om
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-
-  // Funkcija za konverziju ćirilice u latinicu za PDF
-  const cirilicaULatinicu = (text: string): string => {
-    if (!text) return text;
-    
-    const cirilicaLatiniskiMap: Record<string, string> = {
-      'А': 'A', 'а': 'a', 'Б': 'B', 'б': 'b', 'В': 'V', 'в': 'v',
-      'Г': 'G', 'г': 'g', 'Д': 'D', 'д': 'd', 'Ђ': 'Đ', 'ђ': 'đ',
-      'Е': 'E', 'е': 'e', 'Ж': 'Ž', 'ж': 'ž', 'З': 'Z', 'з': 'z',
-      'И': 'I', 'и': 'i', 'Ј': 'J', 'ј': 'j', 'К': 'K', 'к': 'k',
-      'Л': 'L', 'л': 'l', 'Љ': 'Lj', 'љ': 'lj', 'М': 'M', 'м': 'm',
-      'Н': 'N', 'н': 'n', 'Њ': 'Nj', 'њ': 'nj', 'О': 'O', 'о': 'o',
-      'П': 'P', 'п': 'p', 'Р': 'R', 'р': 'r', 'С': 'S', 'с': 's',
-      'Т': 'T', 'т': 't', 'Ћ': 'Ć', 'ћ': 'ć', 'У': 'U', 'у': 'u',
-      'Ф': 'F', 'ф': 'f', 'Х': 'H', 'х': 'h', 'Ц': 'C', 'ц': 'c',
-      'Ч': 'Č', 'ч': 'č', 'Џ': 'Dž', 'џ': 'dž', 'Ш': 'Š', 'ш': 'š'
-    };
-    
-    return text.split('').map(char => cirilicaLatiniskiMap[char] || char).join('');
-  };
-
-  const handleBackendExcelExport = async (selectedIds?: number[]) => {
-    try {
-      setIsExporting(true);
-      setExportError(null);
-      
-      console.log('📤 Starting backend Excel export with template...');
-      
-      let url: string;
-      let options: RequestInit;
-      
-      if (selectedIds && selectedIds.length > 0) {
-        // Export filtered data
-        url = 'http://localhost:8080/api/export/dynamic/filtered';
-        options = {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ ids: selectedIds })
-        };
-        console.log(`📊 Exporting ${selectedIds.length} selected records...`);
-    } else {
-        // Export all data
-        url = 'http://localhost:8080/api/export/dynamic';
-        options = {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
+        }
+        
+        // Only add if we have essential data
+        if (rowData.redniBroj || rowData.ime || rowData.prezime || rowData.jmbg) {
+          // Debug log for problematic data
+          if (rowData.jmbg && typeof rowData.jmbg === 'string' && !/^\d+$/.test(rowData.jmbg)) {
+            console.log(`Row ${row} - Invalid JMBG detected:`, {
+              jmbg: rowData.jmbg,
+              redniBroj: rowData.redniBroj,
+              ime: rowData.ime,
+              prezime: rowData.prezime,
+              allData: rowData
+            });
           }
-        };
-        console.log('📊 Exporting all records...');
-      }
-      
-      const response = await fetch(url, options);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Export failed: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-      
-      // Get filename from Content-Disposition header
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = 'ЕУК_Извештај.xlsx';
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, '');
-          // Decode URI component if needed
-          try {
-            filename = decodeURIComponent(filename);
-          } catch (e) {
-            console.log('Filename already decoded or not URI encoded');
-          }
+          importData.push(rowData);
         }
       }
       
-      // Download file
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
+      console.log(`Extracted ${importData.length} records for import`);
+      console.log('Sample import data:', importData[0]);
+      console.log('All import data:', importData);
       
-      console.log(`✅ Excel file downloaded: ${filename}`);
+      if (importData.length === 0) {
+        alert('Nema podataka za import! Proverite da li je Excel fajl u ispravnom formatu.');
+        return;
+      }
+      
+      // Show progress modal IMMEDIATELY - before any confirm dialogs
+      const BATCH_SIZE = 100; // Process 100 items at a time
+      const totalBatches = Math.ceil(importData.length / BATCH_SIZE);
+      console.log(`Total batches: ${totalBatches}`);
+      
+      // Initialize progress state IMMEDIATELY
+      setCancelImport(false);
+      setImportProgress({
+        isImporting: true,
+        current: 0,
+        total: totalBatches,
+        percentage: 0,
+        estimatedTime: Math.round(totalBatches * 0.2), // ~20 seconds per batch
+        successCount: 0,
+        errorCount: 0
+      });
+      
+      
+      // Force UI update to show modal IMMEDIATELY
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      
+      // Import data to backend using batch processing
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+      
+      // Batch configuration
+      const BATCH_DELAY = 200; // 200ms delay between batches
+      
+      console.log(`Starting batch import of ${importData.length} items with batch size ${BATCH_SIZE}`);
+      
+      // Show initial progress - remove alert, use modal instead
+      console.log(`Početak importa: ${importData.length} zapisa u ${totalBatches} batch-ova\nProcijenjeno vreme: ~${Math.round(totalBatches * 0.2)} minuta`);
+      
+      // Process data in batches
+      console.log(`Processing ${importData.length} items in batches of ${BATCH_SIZE}`);
+      for (let i = 0; i < importData.length; i += BATCH_SIZE) {
+        // Check for cancellation
+        console.log('Checking cancellation state:', cancelImport);
+        if (cancelImport) {
+          console.log('Import cancelled by user');
+          break;
+        }
+        
+        const batch = importData.slice(i, i + BATCH_SIZE);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        
+        console.log(`Processing batch ${batchNumber}/${totalBatches} with ${batch.length} items`);
+        
+        const percentage = Math.round((batchNumber / totalBatches) * 100);
+        const estimatedTime = Math.round((totalBatches - batchNumber) * 0.2);
+        
+        // Update progress state
+        setImportProgress({
+          isImporting: true,
+          current: batchNumber,
+          total: totalBatches,
+          percentage,
+          estimatedTime,
+          successCount,
+          errorCount
+        });
+        
+        // Force UI update
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        console.log(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} items) - Progress: ${percentage}% - Estimated time: ${estimatedTime} min`);
+        
+        try {
+          // Prepare batch data
+          const batchData = batch.map(item => {
+            // Validate essential data - JMBG nije obavezno
+            if (!item.redniBroj && !item.ime && !item.prezime) {
+              throw new Error('Nedostaju osnovni podaci (redni broj, ime ili prezime)');
+            }
+            
+            // Validate JMBG format if provided - be more flexible
+            let jmbgValue = (item.jmbg || '').toString().trim();
+            
+            // Skip validation if JMBG is empty or contains non-numeric characters
+            if (jmbgValue && !/^\d+$/.test(jmbgValue)) {
+              console.warn(`Skipping invalid JMBG value: "${jmbgValue}" - setting to empty`);
+              jmbgValue = ''; // Set to empty instead of throwing error
+            }
+            
+            // Safe number conversion with fallback
+            const safeNumber = (value: any, fieldName: string): number | undefined => {
+              if (!value) return undefined;
+              const num = Number(value);
+              if (isNaN(num)) {
+                console.warn(`Invalid number for ${fieldName}: "${value}" - setting to undefined`);
+                return undefined;
+              }
+              return num;
+            };
+
+            return {
+              redniBroj: (item.redniBroj || '').toString().substring(0, 20),
+              ime: (item.ime || '').toString(),
+              prezime: (item.prezime || '').toString(),
+              jmbg: jmbgValue,
+              pttBroj: (item.pttBroj || '').toString().substring(0, 10),
+              gradOpstina: (item.gradOpstina || '').toString(),
+              mesto: (item.mesto || '').toString(),
+              ulicaIBroj: (item.ulicaIBroj || '').toString(),
+              brojClanovaDomacinstva: safeNumber(item.brojClanovaDomacinstva, 'brojClanovaDomacinstva'),
+              osnovSticanjaStatusa: (item.osnovSticanjaStatusa || '').toString().substring(0, 50),
+              edBrojBrojMernogUredjaja: (item.edBrojBrojMernogUredjaja || '').toString(),
+              potrosnjaIPovrsinaCombined: (item.potrosnjaIPovrsinaCombined || '').toString(),
+              iznosUmanjenjaSaPdv: safeNumber(item.iznosUmanjenjaSaPdv, 'iznosUmanjenjaSaPdv'),
+              brojRacuna: (item.brojRacuna || '').toString()
+            };
+          });
+          
+          // Use new import endpoint instead of old batch APIs
+          try {
+            console.log(`Using new import endpoint for batch ${batchNumber} with ${batchData.length} items`);
+            
+            // Create a temporary Excel file for this batch
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.json_to_sheet(batchData);
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            
+            // Use new import endpoint
+            const formData = new FormData();
+            formData.append('file', blob, `batch_${batchNumber}.xlsx`);
+            formData.append('table', 'euk.ugrozeno_lice_t1');
+            
+            const response = await fetch('http://localhost:8080/api/import/excel', {
+              method: 'POST',
+              body: formData,
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Import failed: ${response.status} ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            successCount += batchData.length;
+            console.log(`✅ Batch ${batchNumber}/${totalBatches}: ${batchData.length} records processed via new import endpoint`);
+            
+          } catch (importError) {
+            console.error(`New import endpoint failed for batch ${batchNumber}:`, importError);
+            // Continue with next batch instead of stopping
+            console.log(`Continuing with next batch despite error in batch ${batchNumber}`);
+          }
+          
+        } catch (error) {
+          errorCount += batch.length;
+          const errorMessage = error instanceof Error ? error.message : 'Nepoznata greška';
+          errors.push(`Batch ${batchNumber}: ${errorMessage}`);
+          console.error(`❌ Batch ${batchNumber}/${totalBatches} failed:`, error);
+          
+          // Continue with next batch instead of stopping completely
+          console.log(`Continuing with next batch despite error in batch ${batchNumber}`);
+          
+          // If too many errors, stop importing
+          if (errorCount >= 1000) {
+            console.error('Too many errors, stopping import');
+            break;
+          }
+        }
+        
+        // Add delay between batches (except for the last batch)
+        if (i + BATCH_SIZE < importData.length) {
+          console.log(`Waiting ${BATCH_DELAY}ms before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        }
+      }
+      
+      // Keep modal open until import is complete
+      console.log('Import completed successfully');
+      console.log(`Final results: ${successCount} successful, ${errorCount} errors`);
+      
+      // Show completion message in modal
+      setImportProgress(prev => ({
+        ...prev,
+        isImporting: true, // Keep modal open
+        current: totalBatches,
+        total: totalBatches,
+        percentage: 100,
+        estimatedTime: 0,
+        successCount: successCount,
+        errorCount: errorCount
+      }));
+      
+      // Wait 5 seconds then close modal
+      setTimeout(() => {
+        setCancelImport(false);
+        setImportProgress({
+          isImporting: false,
+          current: 0,
+          total: 0,
+          percentage: 0,
+          estimatedTime: 0,
+          successCount: 0,
+          errorCount: 0
+        });
+      }, 5000);
+      
+      // Show results
+      if (errorCount === 0) {
+        alert(`Uspešno je importovano ${successCount} zapisa!`);
+      } else {
+        alert(`Import završen!\nUspešno: ${successCount}\nGreške: ${errorCount}\n\nPrve greške:\n${errors.slice(0, 5).join('\n')}`);
+      }
+      
+      // Refresh data
+      await fetchUgrozenaLica();
       
     } catch (error) {
-      console.error('❌ Export error:', error);
-      setExportError(error instanceof Error ? error.message : 'Грешка при извозу');
+      console.error('Import error:', error);
+      alert('Greška pri importu fajla! Proverite da li je fajl u ispravnom Excel formatu.');
     } finally {
-      setIsExporting(false);
+      setLoading(false);
     }
   };
 
   const handleExport = async (selectedColumns: string[], format: string, data: Record<string, unknown>[]) => {
-    // Za Excel format, koristi backend sa template-om
-    if (format === 'excel') {
-      // Extract IDs from data
-      const ids = data
-        .map(item => item.ugrozenoLiceId)
-        .filter((id): id is number => typeof id === 'number');
-      
-      // If we have selected rows from custom selection, use those instead
-      const selectedIds = customSelectedIds.size > 0 
-        ? Array.from(customSelectedIds) 
-        : (ids.length < ugrozenaLica.length ? ids : undefined);
-      
-      await handleBackendExcelExport(selectedIds);
-      return;
-    }
-    
     // Filter data to only include selected columns
     const filteredData = data.map(item => {
       const filteredItem: Record<string, unknown> = {};
       selectedColumns.forEach(col => {
-        // Za JMBG dodaj prefix da se čuva kao tekst u Excel-u
-        if (col === 'jmbg' && item[col]) {
-          // Dodaj tab karakter da Excel tretira kao tekst
-          filteredItem[col] = `\t${item[col]}`;
-        } else {
-          filteredItem[col] = item[col];
-        }
+        filteredItem[col] = item[col];
       });
       return filteredItem;
     });
@@ -519,9 +696,273 @@ export default function UgrozenaLicaPage() {
         const csv = generateCsv(csvConfig)(filteredData as Record<string, string | number>[]);
         download(csvConfig)(csv);
         break;
+      case 'excel':
+        try {
+          console.log('Starting Excel export with template approach...');
+          
+          // Load Excel template
+          const templateResponse = await fetch('/excelTemplate/ЕУК-T1.xlsx');
+          const templateBuffer = await templateResponse.arrayBuffer();
+          
+          // Create a complete copy of the template workbook - preserves ALL formatting
+          const templateWorkbook = XLSX.read(templateBuffer, { 
+            type: 'array',
+            cellStyles: true,
+            cellNF: true,
+            cellHTML: false
+          });
+          
+          // Get the first worksheet (template)
+          const templateSheetName = templateWorkbook.SheetNames[0];
+          const templateWorksheet = templateWorkbook.Sheets[templateSheetName];
+          
+          console.log('Template loaded successfully');
+          
+          // Prepare data for insertion - EXACTLY like your Python example
+          // Each row is one "kupac" - Redosled je: A - O kolona (15 vrednosti)
+          // Use filtered data from ExportDialog (only selected rows)
+          const dataToAdd = data.map(item => [
+            item.ugrozenoLiceId || '',           // A: ID
+            item.redniBroj || '',                // B: Redni broj
+            item.ime || '',                      // C: Ime
+            item.prezime || '',                  // D: Prezime
+            item.jmbg || '',                     // E: JMBG
+            item.pttBroj || '',                  // F: PTT broj
+            item.gradOpstina || '',              // G: Grad/Opština
+            item.mesto || '',                    // H: Mesto
+            item.ulicaIBroj || '',               // I: Ulica i broj
+            item.brojClanovaDomacinstva || '',   // J: Broj članova
+            item.osnovSticanjaStatusa || '',     // K: Osnov sticanja
+            item.edBrojBrojMernogUredjaja || '', // L: ED broj
+            item.potrosnjaIPovrsinaCombined || '', // M: Potrošnja i površina
+            item.iznosUmanjenjaSaPdv || '',      // N: Iznos umanjenja
+            item.brojRacuna || ''                // O: Broj računa
+          ]);
+          
+          console.log(`Prepared ${dataToAdd.length} rows of data for export`);
+          console.log('Sample data row:', dataToAdd[0]);
+          console.log('Total ugrozenaLica length:', ugrozenaLica.length);
+          console.log('Filtered data length:', filteredData.length);
+          
+          // --- 1. Sačuvaj sadržaj ispod tabele (footer je od reda 14 do kraja) ---
+          const footerStart = 14; // Footer starts at row 14 (based on template analysis)
+          const footerRows = [];
+          
+          // Get current range to find max row
+          const currentRange = XLSX.utils.decode_range(templateWorksheet['!ref'] || 'A1');
+          const maxRow = currentRange.e.r + 1; // Convert to 1-based
+          
+          console.log(`Saving footer content from row ${footerStart} to ${maxRow}`);
+          
+          // Save footer rows with all formatting
+          for (let row = footerStart; row <= maxRow; row++) {
+            const footerRow = [];
+            for (let col = 0; col < 15; col++) { // A-O columns
+              const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
+              const cell = templateWorksheet[cellAddress];
+              if (cell) {
+                footerRow.push({
+                  value: cell.v,
+                  style: cell.s,
+                  type: cell.t
+                });
+    } else {
+                footerRow.push(null);
+              }
+            }
+            footerRows.push(footerRow);
+          }
+          
+          console.log(`Saved ${footerRows.length} footer rows`);
+          if (footerRows.length > 0) {
+            console.log('First footer row sample:', footerRows[0].slice(0, 5));
+          }
+          
+          // --- 2. Obriši sve te redove da ne smetaju ---
+          // Clear footer rows (set to undefined to remove them)
+          for (let row = footerStart; row <= maxRow; row++) {
+            for (let col = 0; col < 15; col++) {
+              const cellAddress = XLSX.utils.encode_cell({ r: row - 1, c: col });
+              delete templateWorksheet[cellAddress];
+            }
+          }
+          
+          console.log('Cleared footer rows');
+          
+          // --- 3. Upisi podatke ---
+          const startRow = 9; // A9
+          
+          for (let i = 0; i < dataToAdd.length; i++) {
+            const rowData = dataToAdd[i];
+            const rowNum = startRow + i;
+            
+            for (let j = 0; j < rowData.length; j++) {
+              const colNum = j + 1; // A=1, B=2, etc.
+              const cellAddress = XLSX.utils.encode_cell({ r: rowNum - 1, c: colNum - 1 });
+              
+              // Set cell value
+              templateWorksheet[cellAddress] = { v: rowData[j] };
+            }
+          }
+          
+          console.log(`Data inserted from A${startRow} to O${startRow + dataToAdd.length - 1}`);
+          
+          // --- 4. Ubaci footer odmah ispod poslednjeg reda podataka ---
+          const newFooterStart = startRow + dataToAdd.length + 1; // +1 for spacing
+          
+          for (let i = 0; i < footerRows.length; i++) {
+            const footerRow = footerRows[i];
+            const newRowNum = newFooterStart + i;
+            
+            for (let j = 0; j < footerRow.length; j++) {
+              const oldCell = footerRow[j];
+              if (oldCell) {
+                const cellAddress = XLSX.utils.encode_cell({ r: newRowNum - 1, c: j });
+                const newCell = { v: oldCell.value, t: oldCell.type };
+                
+                // Copy all formatting
+                if (oldCell.style) {
+                  (newCell as any).s = oldCell.style;
+                }
+                
+                templateWorksheet[cellAddress] = newCell;
+              }
+            }
+          }
+          
+          console.log(`Footer inserted starting from row ${newFooterStart}`);
+          console.log(`Footer rows to insert: ${footerRows.length}`);
+          if (footerRows.length > 0) {
+            console.log('Footer insertion sample:', footerRows[0].slice(0, 5));
+          }
+          
+          // --- 5. Smanji visinu reda 19 (footer red) ---
+          const footerRowToResize = newFooterStart + 5; // Row 19 (14 + 5 = 19)
+          if (templateWorksheet['!rows']) {
+            templateWorksheet['!rows'][footerRowToResize - 1] = { hpt: 15 }; // Smanji visinu na 15pt
+            console.log(`Reduced height of row ${footerRowToResize} to 15pt`);
+      } else {
+            templateWorksheet['!rows'] = [];
+            templateWorksheet['!rows'][footerRowToResize - 1] = { hpt: 15 };
+            console.log(`Created !rows and reduced height of row ${footerRowToResize} to 15pt`);
+          }
+          
+          // Update range to include new data and footer
+          const newRange = XLSX.utils.decode_range(templateWorksheet['!ref'] || 'A1');
+          const finalDataEndRow = newFooterStart + footerRows.length - 1;
+          newRange.e.r = Math.max(newRange.e.r, finalDataEndRow - 1);
+          templateWorksheet['!ref'] = XLSX.utils.encode_range(newRange);
+          
+          // Generate filename
+          let filename = 'ЕУК-Т1-Угрожена-лица';
+          if (filters.datumTrajanjaPravaOd || filters.datumTrajanjaPravaDo) {
+            const dateFrom = filters.datumTrajanjaPravaOd ? filters.datumTrajanjaPravaOd.replace(/-/g, '') : '00000000';
+            const dateTo = filters.datumTrajanjaPravaDo ? filters.datumTrajanjaPravaDo.replace(/-/g, '') : '99999999';
+            filename += `_${dateFrom}-${dateTo}`;
+          }
+          filename += '.xlsx';
+          
+          // Save the template with data - template stays EXACTLY the same
+          // Only data is inserted, no formatting changes
+          XLSX.writeFile(templateWorkbook, filename);
+          console.log(`Excel file saved: ${filename} with ${dataToAdd.length} rows - template unchanged`);
+          
+    } catch (error) {
+          console.error('Error with Excel template export:', error);
+          // Fallback to simple Excel export
+          const workbook = XLSX.utils.book_new();
+          const worksheet = XLSX.utils.json_to_sheet(filteredData);
+          const columnWidths = selectedColumns.map(col => ({ wch: Math.max(col.length, 15) }));
+          worksheet['!cols'] = columnWidths;
+          XLSX.utils.book_append_sheet(workbook, worksheet, 'Ugrozena Lica');
+          XLSX.writeFile(workbook, 'ugrozena-lica.xlsx');
+        }
+        break;
       case 'pdf':
-        // PDF export je uklonjen - koristi se backend stampanje
-        console.log('PDF export je uklonjen. Koristite stampanje stranicu za PDF generisanje.');
+        // Create PDF with Unicode support
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'a4'
+        });
+        
+        // Add title
+        pdf.setFontSize(16);
+        pdf.text('ЕУК-Т1 Угрожена лица', 14, 20);
+        
+        // Add filter info if filters are applied
+        let yPosition = 30;
+        if (filters.datumTrajanjaPravaOd || filters.datumTrajanjaPravaDo) {
+          pdf.setFontSize(10);
+          pdf.text('Применени филтери:', 14, yPosition);
+          yPosition += 5;
+          
+          if (filters.datumTrajanjaPravaOd) {
+            pdf.text(`Датум трајања права ОД: ${filters.datumTrajanjaPravaOd}`, 14, yPosition);
+            yPosition += 5;
+          }
+          if (filters.datumTrajanjaPravaDo) {
+            pdf.text(`Датум трајања права ДО: ${filters.datumTrajanjaPravaDo}`, 14, yPosition);
+            yPosition += 5;
+          }
+          yPosition += 5; // Extra space
+        }
+        
+        // Prepare table data
+        const tableData = filteredData.map(item => 
+          selectedColumns.map(col => item[col] || '')
+        );
+        
+        // Add table
+        autoTable(pdf, {
+          head: [selectedColumns.map(col => {
+            // Map ćirilične nazive na latinične za PDF kompatibilnost
+            const headerMap: Record<string, string> = {
+              'ugrozenoLiceId': 'ID',
+              'redniBroj': 'Redni broj',
+              'ime': 'Ime',
+              'prezime': 'Prezime',
+              'jmbg': 'JMBG',
+              'pttBroj': 'PTT broj',
+              'gradOpstina': 'Grad/Opština',
+              'mesto': 'Mesto',
+              'ulicaIBroj': 'Ulica i broj',
+              'brojClanovaDomacinstva': 'Broj članova domaćinstva',
+              'osnovSticanjaStatusa': 'Osnov sticanja statusa',
+              'edBrojBrojMernogUredjaja': 'ED broj/broj mernog uređaja',
+              'potrosnjaIPovrsinaCombined': 'Potrošnja i površina',
+              'iznosUmanjenjaSaPdv': 'Iznos umanjenja sa PDV',
+              'brojRacuna': 'Broj računa',
+              'datumIzdavanjaRacuna': 'Datum izdavanja računa'
+            };
+            return headerMap[col] || col;
+          })],
+          body: tableData,
+          startY: yPosition,
+          styles: {
+            fontSize: 10,
+            cellPadding: 3,
+          },
+          headStyles: {
+            fillColor: [102, 126, 234],
+            textColor: 255,
+            fontStyle: 'bold',
+          },
+          alternateRowStyles: {
+            fillColor: [245, 245, 245],
+          },
+        });
+        
+        // Generate filename with date range if filters are applied
+        let pdfFilename = 'ЕУК-Т1-Угрожена-лица';
+        if (filters.datumTrajanjaPravaOd || filters.datumTrajanjaPravaDo) {
+          const dateFrom = filters.datumTrajanjaPravaOd ? filters.datumTrajanjaPravaOd.replace(/-/g, '') : '00000000';
+          const dateTo = filters.datumTrajanjaPravaDo ? filters.datumTrajanjaPravaDo.replace(/-/g, '') : '99999999';
+          pdfFilename += `_${dateFrom}-${dateTo}`;
+        }
+        pdfFilename += '.pdf';
+        
+        pdf.save(pdfFilename);
         break;
       default:
         console.log('Unknown format:', format);
@@ -717,7 +1158,6 @@ export default function UgrozenaLicaPage() {
     gradOpstina: '',
     mesto: '',
     osnovSticanjaStatusa: '',
-    edBrojBrojMernogUredjaja: '',  // 🆕 NOVO - ED broj
     datumTrajanjaPravaOd: '',  // 🆕 NOVO
     datumTrajanjaPravaDo: ''   // 🆕 NOVO
   });
@@ -835,6 +1275,134 @@ export default function UgrozenaLicaPage() {
         </div>
       </div>
 
+        {/* Import Progress Modal */}
+        {importProgress.isImporting && (
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" 
+            style={{ pointerEvents: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.preventDefault()}
+          >
+            <div 
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 animate-in fade-in-0 zoom-in-95 duration-300" 
+              style={{ pointerEvents: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  {importProgress.percentage === 100 ? (
+                    <div className="w-8 h-8 text-green-600 text-2xl">✓</div>
+                  ) : (
+                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+          </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">
+              {importProgress.percentage === 100 ? 'Import završen!' : 'Import u toku...'}
+            </h3>
+            <p className="text-gray-600">
+              {importProgress.percentage === 100 
+                ? `Uspešno je importovano ${importProgress.successCount} zapisa!`
+                : 'Molimo sačekajte dok se podaci importuju'
+              }
+            </p>
+        </div>
+              
+              {/* Progress Bar */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-700">Napredak</span>
+                  <span className="text-sm font-bold text-blue-600">{importProgress.percentage}%</span>
+      </div>
+                <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-4 rounded-full transition-all duration-500 ease-out relative"
+                    style={{ width: `${importProgress.percentage}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-50 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600 mb-1">{importProgress.successCount}</div>
+                  <div className="text-sm text-green-700 font-medium">Uspešno</div>
+                </div>
+                <div className="bg-red-50 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-red-600 mb-1">{importProgress.errorCount}</div>
+                  <div className="text-sm text-red-700 font-medium">Greške</div>
+                </div>
+              </div>
+              
+              {/* Batch Info */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-700">Batch</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {importProgress.current} / {importProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-gray-400 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+              
+              {/* Time Info */}
+              <div className="text-center mb-6">
+                <div className="text-sm text-gray-600 mb-1">Procijenjeno vreme</div>
+                <div className="text-lg font-bold text-gray-900">
+                  ~{importProgress.estimatedTime} minuta
+                </div>
+              </div>
+              
+          {/* Cancel/Close Button */}
+          <div className="text-center">
+            {importProgress.percentage === 100 ? (
+        <button
+                onClick={() => {
+                  setCancelImport(false);
+                  setImportProgress({
+                    isImporting: false,
+                    current: 0,
+                    total: 0,
+                    percentage: 0,
+                    estimatedTime: 0,
+                    successCount: 0,
+                    errorCount: 0
+                  });
+                }}
+                className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                Zatvori
+        </button>
+            ) : (
+        <button
+                onClick={() => {
+                  setCancelImport(true);
+                  setImportProgress({
+                    isImporting: false,
+                    current: 0,
+                    total: 0,
+                    percentage: 0,
+                    estimatedTime: 0,
+                    successCount: 0,
+                    errorCount: 0
+                  });
+                }}
+                className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                Prekini import
+        </button>
+            )}
+      </div>
+            </div>
+          </div>
+        )}
 
           {error && (
             <ErrorHandler error={error} onRetry={fetchUgrozenaLica} />
@@ -886,37 +1454,6 @@ export default function UgrozenaLicaPage() {
               {/* Right side - Action buttons (only show for table tab) */}
               {activeTab === 'tabela' && (
                 <div className="flex gap-4 items-center">
-                  {/* Import loader */}
-                  {isImporting && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md">
-                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-sm font-medium">Увоз у току...</span>
-                    </div>
-                  )}
-                  
-                  {/* Export loader */}
-                  {isExporting && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-600 rounded-md">
-                      <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-sm font-medium">Извоз у току...</span>
-                    </div>
-                  )}
-                  
-                  {/* Export error */}
-                  {exportError && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-md">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-sm font-medium">{exportError}</span>
-                      <button
-                        onClick={() => setExportError(null)}
-                        className="ml-2 text-red-600 hover:text-red-800"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
                   <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
                     <button
                       onClick={() => {
@@ -937,6 +1474,15 @@ export default function UgrozenaLicaPage() {
                       <FileDownload className="w-4 h-4" />
                       Извоз
                     </button>
+                    <button
+                      onClick={() => setShowExcelExport(!showExcelExport)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors duration-200 text-sm font-medium cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Excel Export T1
+                    </button>
                     {customSelectedIds.size > 0 && (
                       <button
                         onClick={() => setExportDialogOpen(true)}
@@ -948,24 +1494,31 @@ export default function UgrozenaLicaPage() {
                     )}
               </PermissionGuard>
                   <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
-                    <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-200 text-sm font-medium cursor-pointer ${
-                      isImporting 
-                        ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
-                        : 'bg-[#3B82F6] text-white hover:bg-[#2563EB]'
-                    }`}>
-                      {isImporting ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <FileUpload className="w-4 h-4" />
-                      )}
-                      {isImporting ? 'Увоз у току...' : 'Увоз'}
+                    <label className="flex items-center gap-2 px-3 py-1.5 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 text-sm font-medium cursor-pointer">
+                      <FileUpload className="w-4 h-4" />
+                      Увоз
                       <input
                         type="file"
                         accept=".xlsx,.xls"
-                        disabled={isImporting}
                         onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            // Show modal IMMEDIATELY before calling handleImport
+                            setImportProgress({
+                              isImporting: true,
+                              current: 0,
+                              total: 1,
+                              percentage: 0,
+                              estimatedTime: 0,
+                              successCount: 0,
+                              errorCount: 0
+                            });
+                            
+                            // Force UI update
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            console.log('Modal should be visible now');
+                            
+                            // Then call handleImport
                             handleImport(file);
                             e.target.value = ''; // Reset input
                           }
@@ -990,6 +1543,23 @@ export default function UgrozenaLicaPage() {
           {/* Tab Content */}
       {activeTab === 'tabela' ? (
         <>
+              {/* Excel Export Section */}
+              {showExcelExport && (
+                <div className="mb-6">
+                  <T1ExcelExport
+                    baseUrl="http://localhost:8080"
+                    onExportComplete={(filename) => {
+                      console.log('Excel export completed:', filename);
+                      // You can add success notification here
+                    }}
+                    onExportError={(error) => {
+                      console.error('Excel export error:', error);
+                      // You can add error notification here
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Table Container with Horizontal Scroll */}
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
                 {/* Filters Section */}
@@ -1080,7 +1650,7 @@ export default function UgrozenaLicaPage() {
                         {/* Osnov sticanja statusa */}
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Основ стицања статуса</label>
-                          <select
+              <select
                             value={filters.osnovSticanjaStatusa}
                             onChange={(e) => setFilters(prev => ({ ...prev, osnovSticanjaStatusa: e.target.value }))}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer"
@@ -1091,20 +1661,8 @@ export default function UgrozenaLicaPage() {
                                 {kat.skracenica} - {kat.naziv}
                               </option>
                             ))}
-                          </select>
-                        </div>
-
-                        {/* ED broj */}
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">ЕД број</label>
-                          <input
-                            type="text"
-                            placeholder="Претражи по ЕД броју..."
-                            value={filters.edBrojBrojMernogUredjaja}
-                            onChange={(e) => setFilters(prev => ({ ...prev, edBrojBrojMernogUredjaja: e.target.value }))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-text"
-                          />
-                        </div>
+              </select>
+            </div>
 
                         {/* Datum trajanja prava - OD */}
                         <div>
@@ -1142,7 +1700,6 @@ export default function UgrozenaLicaPage() {
                                 gradOpstina: '',
                                 mesto: '',
                                 osnovSticanjaStatusa: '',
-                                edBrojBrojMernogUredjaja: '',
                                 datumTrajanjaPravaOd: '',
                                 datumTrajanjaPravaDo: ''
                               })}
@@ -1170,12 +1727,12 @@ export default function UgrozenaLicaPage() {
                     rows={filteredData}
                     columns={columnsWithSelection}
                     getRowId={(row) => row.ugrozenoLiceId || Math.random()}
-                     paginationModel={{ page: currentPage, pageSize: pageSize }}
-                     onPaginationModelChange={(model) => {
-                       setCurrentPage(model.page);
-                       setPageSize(model.pageSize);
-                     }}
-                     pageSizeOptions={[10, 20, 30]}
+                    paginationModel={{ page: currentPage, pageSize: pageSize }}
+                    onPaginationModelChange={(model) => {
+                      setCurrentPage(model.page);
+                      setPageSize(model.pageSize);
+                    }}
+                    pageSizeOptions={[10, 25, 50, 100]}
                     disableRowSelectionOnClick
                     disableColumnMenu
                     disableColumnSorting
@@ -1244,19 +1801,20 @@ export default function UgrozenaLicaPage() {
 
                             <div className="flex items-center gap-4">
                               {/* Pagination Info */}
-                               <div className="flex items-center gap-3 text-sm text-gray-600">
-                                 <span>Прикажи:</span>
-                                 <select 
-                                   value={pageSize}
-                                   className="px-2 py-1 border border-gray-300 rounded text-xs bg-white cursor-pointer"
-                                   onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
-                                 >
-                                   <option value={10}>10</option>
-                                   <option value={20}>20</option>
-                                   <option value={30}>30</option>
-                                 </select>
-                                 <span>по страници</span>
-                               </div>
+                              <div className="flex items-center gap-3 text-sm text-gray-600">
+                                <span>Прикажи:</span>
+                                <select 
+                                  value={pageSize}
+                                  className="px-2 py-1 border border-gray-300 rounded text-xs bg-white cursor-pointer"
+                                  onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
+                                >
+                                  <option value={10}>10</option>
+                                  <option value={25}>25</option>
+                                  <option value={50}>50</option>
+                                  <option value={100}>100</option>
+                                </select>
+                                <span>по страници</span>
+                              </div>
                               
                               {/* Page Navigation */}
                               <div className="flex items-center gap-2">
@@ -1269,30 +1827,9 @@ export default function UgrozenaLicaPage() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                   </svg>
                                 </button>
-                                
-                                <div className="flex items-center gap-1 text-xs">
-                                  <span>Страница</span>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max={totalPages}
-                                    defaultValue={currentPage + 1}
-                                    key={currentPage}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        const page = parseInt((e.target as HTMLInputElement).value);
-                                        if (page >= 1 && page <= totalPages) {
-                                          setCurrentPage(page - 1);
-                                        } else {
-                                          (e.target as HTMLInputElement).value = (currentPage + 1).toString();
-                                        }
-                                      }
-                                    }}
-                                    className="w-12 px-2 py-1 text-center border border-gray-300 rounded bg-white cursor-text"
-                                  />
-                                  <span>од {totalPages}</span>
-                                </div>
-                                
+                                <span className="px-3 py-1 text-xs bg-white border border-gray-300 rounded">
+                                  Страница {currentPage + 1} од {totalPages}
+                                </span>
                                 <button
                                   onClick={goToNextPage}
                                   disabled={currentPage >= totalPages - 1}
@@ -1338,28 +1875,6 @@ export default function UgrozenaLicaPage() {
             selectedRows={Array.from(customSelectedIds) as any}
             onExport={handleExport}
           />
-
-          {/* Success Popup */}
-          {showSuccessPopup && importResult && (
-            <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right-5 duration-300">
-              <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3">
-                <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="font-semibold">Увоз завршен!</div>
-                  <div className="text-sm text-green-100">
-                    {importResult.processedRecords}/{importResult.totalRecords} записа увезено
-                  </div>
-                  <div className="text-xs text-green-200">
-                    {importResult.filename} • {(importResult.processingTimeMs / 1000).toFixed(1)}s
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
     </div>
     </div>
     </>

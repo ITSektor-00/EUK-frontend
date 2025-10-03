@@ -52,6 +52,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
       }
 
+      // Dodaj rate limiting - sprečimo previše poziva
+      const lastCall = localStorage.getItem('lastUserCall');
+      const now = Date.now();
+      if (lastCall && (now - parseInt(lastCall)) < 5000) { // 5 sekundi između poziva
+        return;
+      }
+      localStorage.setItem('lastUserCall', now.toString());
+
       // Uvek čitaj fresh user podatke - ne koristi cache
       const keys = Object.keys(localStorage);
       keys.forEach(key => {
@@ -128,7 +136,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       setLoading(false);
     }
-  }, [token, loadUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]); // Uklonjen loadUser iz dependency array-a da sprečimo beskonačnu petlju
 
   const login = async (credentials: { usernameOrEmail: string; password: string }) => {
     try {

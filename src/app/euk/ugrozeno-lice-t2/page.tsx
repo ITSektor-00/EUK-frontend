@@ -18,8 +18,6 @@ import { Add, FileDownload, FileUpload } from '@mui/icons-material';
 // Export imports
 import { mkConfig, generateCsv, download } from 'export-to-csv';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import ExportDialog from '../../components/ExportDialog';
 
 import { UgrozenoLiceT2 } from './types';
@@ -36,6 +34,16 @@ export default function UgrozenoLiceT2Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Simple import state
+  const [isImporting, setIsImporting] = useState(false);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    processedRecords: number;
+    totalRecords: number;
+    processingTimeMs: number;
+    filename: string;
+  } | null>(null);
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -154,59 +162,194 @@ export default function UgrozenoLiceT2Page() {
     fetchUgrozenaLicaT2();
   };
 
-  const handleImport = async (file: File) => {
+  // Backend Excel export sa template-om
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Funkcija za konverziju ćirilice u latinicu za PDF
+  const cirilicaULatinicu = (text: string): string => {
+    if (!text) return text;
+    
+    const cirilicaLatiniskiMap: Record<string, string> = {
+      'А': 'A', 'а': 'a', 'Б': 'B', 'б': 'b', 'В': 'V', 'в': 'v',
+      'Г': 'G', 'г': 'g', 'Д': 'D', 'д': 'd', 'Ђ': 'Đ', 'ђ': 'đ',
+      'Е': 'E', 'е': 'e', 'Ж': 'Ž', 'ж': 'ž', 'З': 'Z', 'з': 'z',
+      'И': 'I', 'и': 'i', 'Ј': 'J', 'ј': 'j', 'К': 'K', 'к': 'k',
+      'Л': 'L', 'л': 'l', 'Љ': 'Lj', 'љ': 'lj', 'М': 'M', 'м': 'm',
+      'Н': 'N', 'н': 'n', 'Њ': 'Nj', 'њ': 'nj', 'О': 'O', 'о': 'o',
+      'П': 'P', 'п': 'p', 'Р': 'R', 'р': 'r', 'С': 'S', 'с': 's',
+      'Т': 'T', 'т': 't', 'Ћ': 'Ć', 'ћ': 'ć', 'У': 'U', 'у': 'u',
+      'Ф': 'F', 'ф': 'f', 'Х': 'H', 'х': 'h', 'Ц': 'C', 'ц': 'c',
+      'Ч': 'Č', 'ч': 'č', 'Џ': 'Dž', 'џ': 'dž', 'Ш': 'Š', 'ш': 'š'
+    };
+    
+    return text.split('').map(char => cirilicaLatiniskiMap[char] || char).join('');
+  };
+
+  const handleBackendExcelExport = async (selectedIds?: number[]) => {
     try {
-      setLoading(true);
+      setIsExporting(true);
+      setExportError(null);
       
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
+      console.log('📤 Starting backend Excel export with T2 template...');
       
-      const importData: any[] = [];
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      let url: string;
+      let options: RequestInit;
       
-      for (let row = 1; row <= range.e.r; row++) {
-        const rowData: any = {};
-        const columns = ['redniBroj', 'ime', 'prezime', 'jmbg', 'pttBroj', 'gradOpstina', 'mesto', 'ulicaIBroj', 'edBroj', 'pokVazenjaResenjaOStatusu'];
-        
-        let hasData = false;
-        for (let col = 0; col < 10; col++) {
-          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-          const cell = worksheet[cellAddress];
-          if (cell && cell.v !== null && cell.v !== undefined && cell.v !== '') {
-            hasData = true;
-            rowData[columns[col]] = cell.v;
+      if (selectedIds && selectedIds.length > 0) {
+        // Export filtered data
+        url = 'http://localhost:8080/api/export/dynamic/t2/filtered';
+        options = {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ ids: selectedIds })
+        };
+        console.log(`📊 Exporting ${selectedIds.length} selected T2 records...`);
+      } else {
+        // Export all data
+        url = 'http://localhost:8080/api/export/dynamic/t2';
+        options = {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        };
+        console.log('📊 Exporting all T2 records...');
+      }
+      
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Export failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      
+      // Get filename from Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'ЕУК_Т2_Извештај.xlsx';
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+          // Decode URI component if needed
+          try {
+            filename = decodeURIComponent(filename);
+          } catch (e) {
+            console.log('Filename already decoded or not URI encoded');
           }
         }
-        
-        if (hasData && (rowData.redniBroj || rowData.ime || rowData.prezime || rowData.jmbg)) {
-          importData.push(rowData);
-        }
       }
       
-      if (importData.length === 0) {
-        alert('Nema podataka za import!');
-        return;
-      }
+      // Download file
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      console.log(`✅ Excel file downloaded: ${filename}`);
+      
+    } catch (error) {
+      console.error('❌ Export error:', error);
+      setExportError(error instanceof Error ? error.message : 'Грешка при извозу');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
-      await apiService.createUgrozenoLiceT2Batch(importData, token!);
-      alert(`Uspešno importovano ${importData.length} zapisa!`);
+  const handleImport = async (file: File) => {
+    try {
+      setIsImporting(true);
+      
+      console.log('Sending Excel file to backend via /api/import/excel...');
+      
+      // Send original Excel file directly as MultipartFile
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('tableName', 'euk.ugrozeno_lice_t2'); // 🔴 VAŽNO ZA T2!
+      
+      const response = await fetch('http://localhost:8080/api/import/excel', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Import failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log('Import response:', result);
+      
+      // Check if import was successful
+      if (result.status === 'SUCCESS') {
+        // Store import result
+        setImportResult({
+          processedRecords: result.processedRecords,
+          totalRecords: result.totalRecords,
+          processingTimeMs: result.processingTimeMs,
+          filename: result.filename
+        });
+        
+        // Refresh data
       await fetchUgrozenaLicaT2();
+        
+        // Show success popup with actual data
+        setShowSuccessPopup(true);
+        setTimeout(() => setShowSuccessPopup(false), 3000);
+        
+        console.log(`✅ Import completed: ${result.processedRecords}/${result.totalRecords} records in ${result.processingTimeMs}ms`);
+      } else {
+        throw new Error(result.message || 'Import failed');
+      }
       
     } catch (error) {
       console.error('Import error:', error);
-      alert('Greška pri importu fajla!');
+      // Silent error handling - no alerts
     } finally {
-      setLoading(false);
+      setIsImporting(false);
     }
   };
 
   const handleExport = async (selectedColumns: string[], format: string, data: Record<string, unknown>[]) => {
+    // Za Excel format, koristi backend sa template-om
+    if (format === 'excel') {
+      // Extract IDs from data
+      const ids = data
+        .map(item => item.ugrozenoLiceId)
+        .filter((id): id is number => typeof id === 'number');
+      
+      // If we have selected rows from custom selection, use those instead
+      const selectedIds = customSelectedIds.size > 0 
+        ? Array.from(customSelectedIds) 
+        : (ids.length < ugrozenaLicaT2.length ? ids : undefined);
+      
+      await handleBackendExcelExport(selectedIds);
+      return;
+    }
+    
+    // Filter data to only include selected columns
     const filteredData = data.map(item => {
       const filteredItem: Record<string, unknown> = {};
       selectedColumns.forEach(col => {
+        // Za JMBG dodaj prefix da se čuva kao tekst u Excel-u
+        if (col === 'jmbg' && item[col]) {
+          // Dodaj tab karakter da Excel tretira kao tekst
+          filteredItem[col] = `\t${item[col]}`;
+        } else {
         filteredItem[col] = item[col];
+        }
       });
       return filteredItem;
     });
@@ -216,102 +359,12 @@ export default function UgrozenoLiceT2Page() {
         const csv = generateCsv(csvConfig)(filteredData as Record<string, string | number>[]);
         download(csvConfig)(csv);
         break;
-      case 'excel':
-        try {
-          // Load Excel template for T2
-          const templateResponse = await fetch('/excelTemplate/ЕУК-T2.xlsx');
-          const templateBuffer = await templateResponse.arrayBuffer();
-          
-          const templateWorkbook = XLSX.read(templateBuffer, { 
-            type: 'array',
-            cellStyles: true,
-            cellNF: true,
-            cellHTML: false
-          });
-          
-          const templateSheetName = templateWorkbook.SheetNames[0];
-          const templateWorksheet = templateWorkbook.Sheets[templateSheetName];
-          
-          // Prepare data for T2 template - columns: A-J (10 columns)
-          const dataToAdd = ugrozenaLicaT2.map(item => [
-            item.ugrozenoLiceId || '',           // A: ID
-            item.redniBroj || '',                // B: Redni broj
-            item.ime || '',                      // C: Ime
-            item.prezime || '',                  // D: Prezime
-            item.jmbg || '',                     // E: JMBG
-            item.pttBroj || '',                  // F: PTT broj
-            item.gradOpstina || '',              // G: Grad/Opština
-            item.mesto || '',                    // H: Mesto
-            item.ulicaIBroj || '',               // I: Ulica i broj
-            item.edBroj || '',                   // J: ED broj
-            item.pokVazenjaResenjaOStatusu || '' // K: Pokriće važenja rešenja
-          ]);
-          
-          // Insert data starting from row 9 (A9)
-          const startRow = 9;
-          for (let i = 0; i < dataToAdd.length; i++) {
-            const rowData = dataToAdd[i];
-            const rowNum = startRow + i;
-            
-            for (let j = 0; j < rowData.length; j++) {
-              const cellAddress = XLSX.utils.encode_cell({ r: rowNum - 1, c: j });
-              templateWorksheet[cellAddress] = { v: rowData[j] };
-            }
-          }
-          
-          // Update range
-          const range = XLSX.utils.decode_range(templateWorksheet['!ref'] || 'A1');
-          range.e.r = Math.max(range.e.r, startRow + dataToAdd.length - 1);
-          templateWorksheet['!ref'] = XLSX.utils.encode_range(range);
-          
-          // Generate filename
-          const filename = `ЕУК-Т2-Угрожена-лица-${new Date().toISOString().split('T')[0]}.xlsx`;
-          
-          XLSX.writeFile(templateWorkbook, filename);
-        } catch (error) {
-          console.error('Error with Excel template export:', error);
-          // Fallback to simple Excel export
-          const workbook = XLSX.utils.book_new();
-          const worksheet = XLSX.utils.json_to_sheet(filteredData);
-          XLSX.utils.book_append_sheet(workbook, worksheet, 'Ugrozena Lica T2');
-          XLSX.writeFile(workbook, 'ugrozena-lica-t2.xlsx');
-        }
-        break;
       case 'pdf':
-        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        pdf.setFontSize(16);
-        pdf.text('ЕУК-Т2 Угрожена лица', 14, 20);
-        
-        const tableData = filteredData.map(item => 
-          selectedColumns.map(col => item[col] || '')
-        );
-        
-        autoTable(pdf, {
-          head: [selectedColumns.map(col => {
-            const headerMap: Record<string, string> = {
-              'ugrozenoLiceId': 'ID',
-              'redniBroj': 'Redni broj',
-              'ime': 'Ime',
-              'prezime': 'Prezime',
-              'jmbg': 'JMBG',
-              'pttBroj': 'PTT broj',
-              'gradOpstina': 'Grad/Opština',
-              'mesto': 'Mesto',
-              'ulicaIBroj': 'Ulica i broj',
-              'edBroj': 'ED broj',
-              'pokVazenjaResenjaOStatusu': 'Pokriće važenja rešenja'
-            };
-            return headerMap[col] || col;
-          })],
-          body: tableData,
-          startY: 30,
-          styles: { fontSize: 10, cellPadding: 3 },
-          headStyles: { fillColor: [102, 126, 234], textColor: 255, fontStyle: 'bold' },
-          alternateRowStyles: { fillColor: [245, 245, 245] },
-        });
-        
-        pdf.save('ugrozena-lica-t2.pdf');
+        // PDF export je uklonjen - koristi se backend stampanje
+        console.log('PDF export je uklonjen. Koristite stampanje stranicu za PDF generisanje.');
         break;
+      default:
+        console.log('Unknown format:', format);
     }
   };
 
@@ -536,6 +589,38 @@ export default function UgrozenoLiceT2Page() {
 
               {activeTab === 'tabela' && (
                 <div className="flex gap-4 items-center">
+                  {/* Import loader */}
+                  {isImporting && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md">
+                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-sm font-medium">Увоз у току...</span>
+                    </div>
+                  )}
+                  
+                  {/* Export loader */}
+                  {isExporting && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-600 rounded-md">
+                      <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-sm font-medium">Извоз у току...</span>
+                    </div>
+                  )}
+                  
+                  {/* Export error */}
+                  {exportError && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-md">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-sm font-medium">{exportError}</span>
+                      <button
+                        onClick={() => setExportError(null)}
+                        className="ml-2 text-red-600 hover:text-red-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                  
                   <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
                     <button
                       onClick={() => {
@@ -549,30 +634,52 @@ export default function UgrozenoLiceT2Page() {
                     </button>
                   </PermissionGuard>
                   
-                  <button
-                    onClick={() => setExportDialogOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#E5E7EB] text-[#1F2937] rounded-md hover:bg-[#D1D5DB] transition-colors duration-200 text-sm font-medium cursor-pointer"
-                  >
-                    <FileDownload className="w-4 h-4" />
-                    Извоз
-                  </button>
+                  <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="read" userId={user?.id || undefined}>
+                    <button
+                      onClick={() => setExportDialogOpen(true)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-[#E5E7EB] text-[#1F2937] rounded-md hover:bg-[#D1D5DB] transition-colors duration-200 text-sm font-medium cursor-pointer"
+                    >
+                      <FileDownload className="w-4 h-4" />
+                      Извоз
+                    </button>
+                    {customSelectedIds.size > 0 && (
+                      <button
+                        onClick={() => setExportDialogOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200 text-sm font-medium cursor-pointer shadow-md"
+                      >
+                        <FileDownload className="w-4 h-4" />
+                        Извоз означених ({customSelectedIds.size})
+                      </button>
+                    )}
+                  </PermissionGuard>
                   
-                  <label className="flex items-center gap-2 px-3 py-1.5 bg-[#3B82F6] text-white rounded-md hover:bg-[#2563EB] transition-colors duration-200 text-sm font-medium cursor-pointer">
-                    <FileUpload className="w-4 h-4" />
-                    Увоз
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          handleImport(file);
-                          e.target.value = '';
-                        }
-                      }}
-                      className="hidden"
-                    />
-                  </label>
+                  <PermissionGuard routeName="/euk/ugrozena-lica" requiredPermission="write" userId={user?.id || undefined}>
+                    <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-200 text-sm font-medium cursor-pointer ${
+                      isImporting 
+                        ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                        : 'bg-[#3B82F6] text-white hover:bg-[#2563EB]'
+                    }`}>
+                      {isImporting ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <FileUpload className="w-4 h-4" />
+                      )}
+                      {isImporting ? 'Увоз у току...' : 'Увоз'}
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        disabled={isImporting}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleImport(file);
+                            e.target.value = '';
+                          }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </PermissionGuard>
                   
                   <button
                     onClick={() => setShowFilters(!showFilters)}
@@ -709,15 +816,14 @@ export default function UgrozenoLiceT2Page() {
               <Paper sx={{ height: 600, width: '100%' }}>
                 <DataGrid
                   rows={ugrozenaLicaT2}
-                  columns={columns}
+                  columns={columnsWithSelection}
                   getRowId={(row) => row.ugrozenoLiceId || Math.random()}
                   paginationModel={{ page: currentPage, pageSize: pageSize }}
                   onPaginationModelChange={(model) => {
                     setCurrentPage(model.page);
                     setPageSize(model.pageSize);
                   }}
-                  pageSizeOptions={[10, 25, 50, 100]}
-                  checkboxSelection
+                  pageSizeOptions={[10, 20, 30]}
                   disableRowSelectionOnClick
                   disableColumnMenu
                   disableColumnSorting
@@ -741,6 +847,11 @@ export default function UgrozenoLiceT2Page() {
                             <span className="text-sm text-gray-600">
                               Укупно: <span className="font-semibold text-gray-800">{ugrozenaLicaT2.length}</span> угрожених лица Т2
                             </span>
+                            {customSelectedIds.size > 0 && (
+                              <span className="text-sm text-blue-600">
+                                Означено: <span className="font-semibold text-blue-800">{customSelectedIds.size}</span> за извоз
+                              </span>
+                            )}
                             <button
                               onClick={handleRefresh}
                               disabled={refreshing}
@@ -783,8 +894,31 @@ export default function UgrozenoLiceT2Page() {
               .filter(col => col.field !== 'actions')
               .map(col => ({ accessorKey: col.field, header: col.headerName || col.field }))}
             data={ugrozenaLicaT2 as unknown as Record<string, unknown>[]}
+            selectedRows={Array.from(customSelectedIds) as any}
             onExport={handleExport}
           />
+
+          {/* Success Popup */}
+          {showSuccessPopup && importResult && (
+            <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right-5 duration-300">
+              <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3">
+                <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="font-semibold">Увоз завршен!</div>
+                  <div className="text-sm text-green-100">
+                    {importResult.processedRecords}/{importResult.totalRecords} записа увезено
+                  </div>
+                  <div className="text-xs text-green-200">
+                    {importResult.filename} • {(importResult.processingTimeMs / 1000).toFixed(1)}s
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

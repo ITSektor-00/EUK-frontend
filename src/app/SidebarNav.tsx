@@ -150,10 +150,10 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
   const getRoleBasedRoutes = (role: string): string[] => {
     const roleRoutes: { [key: string]: string[] } = {
       'ADMIN': [], // ADMIN ne koristi EUK sekciju - samo admin panel
-      'KORISNIK': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/ugrozeno-lice-t2', 'euk/stampanje'] // Svi korisnici imaju pristup EUK funkcionalnostima
+      'KORISNIK': ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/ugrozeno-lice-t2', 'euk/stampanje', 'euk/formulari'] // Svi korisnici imaju pristup EUK funkcionalnostima
     };
 
-    return roleRoutes[role] || ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/ugrozeno-lice-t2', 'euk/stampanje']; // Default za sve ostale
+    return roleRoutes[role] || ['euk/kategorije', 'euk/predmeti', 'euk/ugrozena-lica', 'euk/ugrozeno-lice-t2', 'euk/stampanje', 'euk/formulari']; // Default za sve ostale
   };
 
   const getFallbackRoutesForRole = (role: string): UserRoute[] => {
@@ -205,6 +205,7 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
       'euk/ugrozena-lica': { label: 'ЕУК-Т1 УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
       'euk/ugrozeno-lice-t2': { label: 'ЕУК-Т2 УГРОЖЕНА ЛИЦА', icon: 'ugrozena-lica' },
       'euk/stampanje': { label: 'ШТАМПАЊЕ', icon: 'stampanje' },
+      'euk/formulari': { label: 'ФОРМУЛАРИ', icon: 'stampanje' },
       'reports': { label: 'ИЗВЕШТАЈИ', icon: 'komandnaTabla' },
       'analytics': { label: 'АНАЛИТИКА', icon: 'komandnaTabla' }
     };
@@ -221,6 +222,7 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
       allowedRoutes = getRoleBasedRoutes(userRole);
     }
 
+
     const eukLinks = allowedRoutes
       .filter(route => route.startsWith('euk/'))
       .map(route => ({
@@ -229,12 +231,29 @@ export default function SidebarNav({ sidebarOpen = true, onToggle, isAdmin = fal
         icon: <DynamicIcon iconName={routeMap[route]?.icon || 'komandnaTabla'} alt={route} />
       }));
 
+    // Dodaj formulari link posebno
+    const formulariLink = allowedRoutes.includes('formulari') ? {
+      href: '/formulari',
+      label: routeMap['formulari']?.label || 'ФОРМУЛАРИ',
+      icon: <DynamicIcon iconName={routeMap['formulari']?.icon || 'stampanje'} alt="ФОРМУЛАРИ" />
+    } : null;
+
+
     const sections = [];
 
     if (eukLinks.length > 0) {
+      const allLinks = [...eukLinks];
+      if (formulariLink) {
+        allLinks.push(formulariLink);
+      }
       sections.push({
         title: 'ЕУК СИСТЕМ',
-        links: eukLinks
+        links: allLinks
+      });
+    } else if (formulariLink) {
+      sections.push({
+        title: 'ЕУК СИСТЕМ',
+        links: [formulariLink]
       });
     }
 
@@ -343,6 +362,11 @@ function SidebarItem({ href, icon, label, active, sidebarOpen }: {
     
     // EUK rute - samo korisnici mogu da pristupe
     if (href.startsWith('/euk')) {
+      return userRole === 'KORISNIK' || userRole === 'USER';
+    }
+    
+    // Formulari rute - samo korisnici mogu da pristupe
+    if (href.startsWith('/formulari')) {
       return userRole === 'KORISNIK' || userRole === 'USER';
     }
     

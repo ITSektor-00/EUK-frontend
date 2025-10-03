@@ -335,6 +335,8 @@ class ApiService {
     return this.apiCall('/api/euk/ugrozena-lica-t1/count', { method: 'GET' }, token);
   }
 
+  // Note: Batch progress endpoints removed - using direct /api/import/excel endpoint instead
+
   // ===== UGROZENO LICE T2 API ENDPOINTS =====
 
   async getUgrozenaLicaT2(params: string, token: string) {
@@ -470,9 +472,7 @@ class ApiService {
     return this.apiCall('/api/euk/kategorije/count', { method: 'GET' }, token);
   }
 
-  async getKategorijaBatchProgress(batchId: string, token: string) {
-    return this.apiCall(`/api/euk/kategorije/batch-progress/${batchId}`, { method: 'GET' }, token);
-  }
+  // Note: Batch progress endpoints removed - using direct import endpoints instead
 
   // Auth endpoints
   async signUp(userData: {
@@ -688,7 +688,9 @@ class ApiService {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        }
+        },
+        // Dodaj timeout da sprečimo beskonačno čekanje
+        signal: AbortSignal.timeout(10000) // 10 sekundi timeout
       });
 
       if (!response.ok) {

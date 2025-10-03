@@ -3,6 +3,14 @@ import type { NextRequest } from "next/server";
 import { jwtVerify } from 'jose';
 
 export async function middleware(req: NextRequest) {
+  // Izuzmi login rutu, API rute i statičke fajlove od middleware-a
+  if (req.nextUrl.pathname === "/login" || 
+      req.nextUrl.pathname.startsWith("/api/") ||
+      req.nextUrl.pathname.startsWith("/_next/") ||
+      req.nextUrl.pathname === "/favicon.ico") {
+    return NextResponse.next();
+  }
+
   const token = req.cookies.get("token")?.value;
 
   if (!token) {

@@ -90,7 +90,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     hasCheckedLicense.current = false;
     await checkLicense();
-  }, [checkLicense, user?.id]);
+  }, [user?.id]); // Uklonjen checkLicense iz dependency array-a
 
   // Proveri licencu kada se korisnik uloguje ili kada se promeni user
   useEffect(() => {
@@ -109,7 +109,8 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
       setLicenseInfo(null);
       setError(null);
     }
-  }, [isAuthenticated, user?.id, token, checkLicense]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.id, token]); // Uklonjen checkLicense iz dependency array-a
 
   // Automatska provera licence svakih 15 minuta (smanjeno da izbegnemo rate limiting)
   useEffect(() => {

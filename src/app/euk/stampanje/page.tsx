@@ -6,8 +6,6 @@ import { apiService } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { DataGrid, GridColDef, GridRenderCellParams, GridRowSelectionModel } from '@mui/x-data-grid';
 import { Paper } from '@mui/material';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 // Funkcija za konverziju srpske latinice u ćirilicu
 const latinToCyrillic = (text: string): string => {
@@ -45,14 +43,59 @@ export default function StampanjePage() {
   const [ugrozenaLicaT2, setUgrozenaLicaT2] = useState<UgrozenoLiceT2[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingT2, setLoadingT2] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<any[]>([]);
-  const [selectedIdsT2, setSelectedIdsT2] = useState<any[]>([]);
+  // State za custom selekciju
+  const [customSelectedIds, setCustomSelectedIds] = useState<Set<number>>(new Set());
+  const [customSelectedIdsT2, setCustomSelectedIdsT2] = useState<Set<number>>(new Set());
   const [toast, setToast] = useState<{msg: string, type: 'success'|'error'}|null>(null);
   const [activeTab, setActiveTab] = useState<'euk-t1' | 'euk-t2'>('euk-t1');
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [previewLice, setPreviewLice] = useState<UgrozenoLiceT1 | null>(null);
   const [previewLiceT2, setPreviewLiceT2] = useState<UgrozenoLiceT2 | null>(null);
+
+  // Toggle funkcije za selekciju
+  const toggleRowSelection = (id: number) => {
+    setCustomSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleRowSelectionT2 = (id: number) => {
+    setCustomSelectedIdsT2(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all / Deselect all
+  const toggleSelectAll = () => {
+    if (customSelectedIds.size > 0) {
+      setCustomSelectedIds(new Set());
+    } else {
+      const allIds = new Set(ugrozenaLica.map(lice => lice.ugrozenoLiceId).filter((id): id is number => Boolean(id)));
+      setCustomSelectedIds(allIds);
+    }
+  };
+
+  const toggleSelectAllT2 = () => {
+    if (customSelectedIdsT2.size > 0) {
+      setCustomSelectedIdsT2(new Set());
+    } else {
+      const allIds = new Set(ugrozenaLicaT2.map(lice => lice.ugrozenoLiceId).filter((id): id is number => Boolean(id)));
+      setCustomSelectedIdsT2(allIds);
+    }
+  };
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -106,7 +149,11 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        const res = await fetch(`/api/euk/ugrozena-lica?${params.toString()}`);
+        const res = await fetch(`${apiService['baseURL']}/api/euk/ugrozena-lica?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         
         if (!res.ok) {
         throw new Error(`HTTP greška: ${res.status}`);
@@ -181,79 +228,145 @@ export default function StampanjePage() {
   };
 
   const generatePDF = async (lice: UgrozenoLiceT1) => {
-    // Kreiranje HTML elementa za PDF - vratićemo se na html2canvas pristup
-    const element = document.createElement('div');
-    element.style.width = '246mm';
-    element.style.height = '175mm';
-    element.style.position = 'relative';
-    element.style.background = 'white'; // Bez pozadinske slike
-    element.style.fontFamily = 'Arial, sans-serif';
-    element.style.overflow = 'hidden';
-    element.style.border = '1px solid #ccc';
-
-    // Dodavanje sadržaja sa novim pozicioniranjem i ćirilicom
-    element.innerHTML = `
-      <!-- Horizontalne linije za merenje -->
-      <div style="position: absolute; left: 0; top: 21mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 0; top: 31mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 0; top: 41mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 0; top: 100mm; width: 246mm; height: 1px; background: blue; z-index: 10;"></div>
-      
-      <!-- Vertikalne linije za merenje -->
-      <div style="position: absolute; left: 15mm; top: 0; width: 1px; height: 175mm; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 90mm; top: 0; width: 1px; height: 175mm; background: blue; z-index: 10;"></div>
-      
-      <!-- Tekst -->
-      <div style="position: absolute; left: 15mm; top: 21mm; font-size: 10pt; font-weight: bold; color: black;">СЕКРЕТАРИЈАТ ЗА СОЦИЈАЛНУ ЗАШТИТУ</div>
-      <div style="position: absolute; left: 15mm; top: 31mm; font-size: 10pt; font-weight: bold; color: black;">27 МАРТА БР. 43-45</div>
-      <div style="position: absolute; left: 15mm; top: 41mm; font-size: 10pt; font-weight: bold; color: black;">11000 Београд</div>
-      <div style="position: absolute; left: 90mm; top: 100mm; font-size: 12pt; font-weight: bold; color: black;">${latinToCyrillic(lice.ime || '')} ${latinToCyrillic(lice.prezime || '')}</div>
-    `;
-
-    // Dodavanje elementa u DOM
-    element.style.position = 'absolute';
-    element.style.left = '-9999px';
-    element.style.top = '0';
-    document.body.appendChild(element);
-
     try {
-      // Generisanje canvas-a
-      const canvas = await html2canvas(element, {
-        width: 930, // 246mm u pikselima (246mm * 3.78)
-        height: 662, // 175mm u pikselima (175mm * 3.78)
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff'
+      const apiUrl = `${apiService['baseURL']}/api/generate-envelope-pdf`;
+      console.log('PDF URL:', apiUrl);
+      console.log('PDF Request data:', {
+        template: 'T1',
+        ugrozenaLica: [{
+          ugrozenoLiceId: lice.ugrozenoLiceId,
+          ime: lice.ime,
+          prezime: lice.prezime,
+          ulicaIBroj: lice.ulicaIBroj,
+          pttBroj: lice.pttBroj,
+          gradOpstina: lice.gradOpstina,
+          mesto: lice.mesto
+        }]
+      });
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T1',
+          ugrozenaLica: [{
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }]
+        })
       });
 
-      // Kreiranje PDF-a
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: [246, 175]
-      });
+      console.log('PDF Response status:', response.status);
+      console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
 
-      // Dodavanje slike u PDF
-      pdf.addImage(imgData, 'PNG', 0, 0, 246, 175);
-
-      // Otvaranje PDF-a u novom tabu
-      const pdfBlob = pdf.output('blob');
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      const blob = await response.blob();
+      console.log('PDF Blob size:', blob.size, 'bytes');
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-t1.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
 
       // Čišćenje
       setTimeout(() => {
-        URL.revokeObjectURL(pdfUrl);
+        URL.revokeObjectURL(url);
       }, 1000);
 
     } catch (error) {
       console.error('Greška pri generisanju PDF-a:', error);
       setToast({msg: 'Greška pri generisanju PDF-a', type: 'error'});
-    } finally {
-      // Uklanjanje elementa iz DOM-a
-      document.body.removeChild(element);
+    }
+  };
+
+  // Funkcija za generisanje PDF-a zadnje strane koverte (T1)
+  const generateBackSidePDF = async (lice: UgrozenoLiceT1) => {
+    try {
+      const apiUrl = `${apiService['baseURL']}/api/generate-envelope-back-side-pdf`;
+      console.log('Back Side PDF URL:', apiUrl);
+      console.log('Back Side PDF Request data:', {
+        template: 'T1',
+        ugrozenaLica: [{
+          ugrozenoLiceId: lice.ugrozenoLiceId,
+          ime: lice.ime,
+          prezime: lice.prezime,
+          ulicaIBroj: lice.ulicaIBroj,
+          pttBroj: lice.pttBroj,
+          gradOpstina: lice.gradOpstina,
+          mesto: lice.mesto
+        }]
+      });
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T1',
+          ugrozenaLica: [{
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }]
+        })
+      });
+
+      console.log('Back Side PDF Response status:', response.status);
+      console.log('Back Side PDF Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      console.log('Back Side PDF Blob size:', blob.size, 'bytes');
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-zadnja-strana-t1.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+      // Čišćenje
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a zadnje strane:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a zadnje strane', type: 'error'});
     }
   };
 
@@ -262,291 +375,485 @@ export default function StampanjePage() {
   };
 
   const generateMultiplePDF = async (lica: UgrozenoLiceT1[]) => {
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: [246, 175]
-    });
+    try {
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T1',
+          ugrozenaLica: lica.map(lice => ({
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }))
+        })
+      });
 
-    for (let i = 0; i < lica.length; i++) {
-      const lice = lica[i];
+      console.log('PDF Response status:', response.status);
+      console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
       
-      if (i > 0) {
-        pdf.addPage();
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
       }
 
-      // Kreiranje HTML elementa za svaku kovertu
-      const element = document.createElement('div');
-      element.style.width = '246mm';
-      element.style.height = '175mm';
-      element.style.position = 'relative';
-      element.style.background = 'white'; // Bez pozadinske slike
-      element.style.fontFamily = 'Arial, sans-serif';
-      element.style.overflow = 'hidden';
-      element.style.border = '1px solid #ccc';
-
-      // Dodavanje sadržaja sa novim pozicioniranjem i ćirilicom
-      element.innerHTML = `
-        <!-- Horizontalne linije za merenje -->
-        <div style="position: absolute; left: 0; top: 21mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 0; top: 31mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 0; top: 41mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 0; top: 100mm; width: 246mm; height: 1px; background: blue; z-index: 10;"></div>
-        
-        <!-- Vertikalne linije za merenje -->
-        <div style="position: absolute; left: 15mm; top: 0; width: 1px; height: 175mm; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 90mm; top: 0; width: 1px; height: 175mm; background: blue; z-index: 10;"></div>
-        
-        <!-- Tekst -->
-        <div style="position: absolute; left: 15mm; top: 21mm; font-size: 10pt; font-weight: bold; color: black;">СЕКРЕТАРИЈАТ ЗА СОЦИЈАЛНУ ЗАШТИТУ</div>
-        <div style="position: absolute; left: 15mm; top: 31mm; font-size: 10pt; font-weight: bold; color: black;">27 МАРТА БР. 43-45</div>
-        <div style="position: absolute; left: 15mm; top: 41mm; font-size: 10pt; font-weight: bold; color: black;">11000 Београд</div>
-        <div style="position: absolute; left: 90mm; top: 100mm; font-size: 12pt; font-weight: bold; color: black;">${latinToCyrillic(lice.ime || '')} ${latinToCyrillic(lice.prezime || '')}</div>
-      `;
-
-      // Dodavanje elementa u DOM
-      element.style.position = 'absolute';
-      element.style.left = '-9999px';
-      element.style.top = '0';
-      document.body.appendChild(element);
-
-      try {
-        // Generisanje canvas-a
-        const canvas = await html2canvas(element, {
-          width: 930,
-          height: 662,
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff'
-        });
-
-        // Dodavanje slike u PDF
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', 0, 0, 246, 175);
-
-      } catch (error) {
-        console.error('Greška pri generisanju koverta:', error);
-      } finally {
-        // Uklanjanje elementa iz DOM-a
-        document.body.removeChild(element);
-      }
-    }
-
-    // Otvaranje PDF-a u novom tabu
-    const pdfBlob = pdf.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
+      const blob = await response.blob();
+      console.log('PDF Blob size:', blob.size, 'bytes');
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-t1.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
 
     // Čišćenje
     setTimeout(() => {
-      URL.revokeObjectURL(pdfUrl);
+        URL.revokeObjectURL(url);
     }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a', type: 'error'});
+    }
   };
 
-  const handlePrintMultiple = () => {
-    if (selectedIds.length === 0) {
-      setToast({msg: 'Izaberite bar jedno ugroženo lice za štampanje', type: 'error'});
-      setTimeout(() => setToast(null), 3000);
+
+  // Funkcija za štampu označenih lica (T1)
+  const handlePrintSelected = async () => {
+    if (customSelectedIds.size === 0) {
       return;
     }
 
-    const selectedLica = ugrozenaLica.filter(lice => lice.ugrozenoLiceId && selectedIds.includes(lice.ugrozenoLiceId));
-    generateMultiplePDF(selectedLica);
+    try {
+      const selectedLica = ugrozenaLica.filter(lice => 
+        lice.ugrozenoLiceId && customSelectedIds.has(lice.ugrozenoLiceId)
+      );
+
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T1',
+          ugrozenaLica: selectedLica.map(lice => ({
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-t1.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+    }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a:', error);
+    }
   };
 
-  const handleSelect = (id: number, checked: boolean) => {
-    setSelectedIds((prev: any) => checked ? [...prev, id] : prev.filter((x: any) => x !== id));
+  // Funkcija za štampu označenih lica - zadnja strana (T1)
+  const handlePrintSelectedBackSide = async () => {
+    if (customSelectedIds.size === 0) {
+      return;
+    }
+
+    try {
+      const selectedLica = ugrozenaLica.filter(lice => 
+        lice.ugrozenoLiceId && customSelectedIds.has(lice.ugrozenoLiceId)
+      );
+
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-back-side-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T1',
+          ugrozenaLica: selectedLica.map(lice => ({
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-zadnja-strana-t1.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+    }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a zadnje strane:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a zadnje strane', type: 'error'});
+    }
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(ugrozenaLica.map(lice => lice.ugrozenoLiceId).filter((id): id is number => id !== undefined));
-    } else {
-      setSelectedIds([]);
+  // Funkcija za štampu označenih lica (T2)
+  const handlePrintSelectedT2 = async () => {
+    if (customSelectedIdsT2.size === 0) {
+      return;
+    }
+
+    try {
+      const selectedLica = ugrozenaLicaT2.filter(lice => 
+        lice.ugrozenoLiceId && customSelectedIdsT2.has(lice.ugrozenoLiceId)
+      );
+
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T2',
+          ugrozenaLica: selectedLica.map(lice => ({
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-t2.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a:', error);
+    }
+  };
+
+  // Funkcija za štampu označenih lica - zadnja strana (T2)
+  const handlePrintSelectedBackSideT2 = async () => {
+    if (customSelectedIdsT2.size === 0) {
+      return;
+    }
+
+    try {
+      const selectedLica = ugrozenaLicaT2.filter(lice => 
+        lice.ugrozenoLiceId && customSelectedIdsT2.has(lice.ugrozenoLiceId)
+      );
+
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-back-side-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T2',
+          ugrozenaLica: selectedLica.map(lice => ({
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-zadnja-strana-t2.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a zadnje strane T2:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a zadnje strane T2', type: 'error'});
     }
   };
 
   // T2 functions
   const generatePDFT2 = async (lice: UgrozenoLiceT2) => {
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    // Kreiranje HTML elementa za PDF - vratićemo se na html2canvas pristup
-    const element = document.createElement('div');
-    element.style.width = '246mm';
-    element.style.height = '175mm';
-    element.style.position = 'relative';
-    element.style.background = 'white'; // Bez pozadinske slike
-    element.style.fontFamily = 'Arial, sans-serif';
-    element.style.overflow = 'hidden';
-    element.style.border = '1px solid #ccc';
-
-    // Dodavanje sadržaja sa novim pozicioniranjem i ćirilicom
-    element.innerHTML = `
-      <!-- Horizontalne linije za merenje -->
-      <div style="position: absolute; left: 0; top: 21mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 0; top: 31mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 0; top: 41mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 0; top: 100mm; width: 246mm; height: 1px; background: blue; z-index: 10;"></div>
-      
-      <!-- Vertikalne linije za merenje -->
-      <div style="position: absolute; left: 15mm; top: 0; width: 1px; height: 175mm; background: red; z-index: 10;"></div>
-      <div style="position: absolute; left: 90mm; top: 0; width: 1px; height: 175mm; background: blue; z-index: 10;"></div>
-      
-      <!-- Tekst -->
-      <div style="position: absolute; left: 15mm; top: 21mm; font-size: 10pt; font-weight: bold; color: black;">СЕКРЕТАРИЈАТ ЗА СОЦИЈАЛНУ ЗАШТИТУ</div>
-      <div style="position: absolute; left: 15mm; top: 31mm; font-size: 10pt; font-weight: bold; color: black;">27 МАРТА БР. 43-45</div>
-      <div style="position: absolute; left: 15mm; top: 41mm; font-size: 10pt; font-weight: bold; color: black;">11000 Београд</div>
-      <div style="position: absolute; left: 90mm; top: 100mm; font-size: 12pt; font-weight: bold; color: black;">${latinToCyrillic(lice.ime || '')} ${latinToCyrillic(lice.prezime || '')}</div>
-    `;
-
-    // Dodavanje elementa u DOM
-    element.style.position = 'absolute';
-    element.style.left = '-9999px';
-    element.style.top = '0';
-    document.body.appendChild(element);
-
     try {
-      // Generisanje canvas-a
-      const canvas = await html2canvas(element, {
-        width: 930,
-        height: 662,
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff'
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T2',
+          ugrozenaLica: [{
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }]
+        })
       });
 
-      // Dodavanje slike u PDF
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', 0, 0, 246, 175);
+      console.log('PDF Response status:', response.status);
+      console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      console.log('PDF Blob size:', blob.size, 'bytes');
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-t2.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+    // Čišćenje
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+    }, 1000);
 
     } catch (error) {
-      console.error('Greška pri generisanju koverta T2:', error);
-    } finally {
-      // Uklanjanje elementa iz DOM-a
-      document.body.removeChild(element);
-    }
-
-    // Otvaranje PDF-a u novom tabu
-    const pdfBlob = pdf.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
-
-    // Čišćenje
-    setTimeout(() => {
-      URL.revokeObjectURL(pdfUrl);
-    }, 1000);
-  };
-
-  const handlePrintMultipleT2 = () => {
-    if (selectedIdsT2.length === 0) {
-      setToast({msg: 'Izaberite bar jedno ugroženo lice T2 za štampanje', type: 'error'});
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-
-    const selectedLicaT2 = ugrozenaLicaT2.filter(lice => lice.ugrozenoLiceId && selectedIdsT2.includes(lice.ugrozenoLiceId));
-    generateMultiplePDFT2(selectedLicaT2);
-  };
-
-  const handleSelectT2 = (id: number, checked: boolean) => {
-    setSelectedIdsT2((prev: any[]) => checked ? [...prev, id] : prev.filter((x: any) => x !== id));
-  };
-
-  const handleSelectAllT2 = (checked: boolean) => {
-    if (checked) {
-      setSelectedIdsT2(ugrozenaLicaT2.map(lice => lice.ugrozenoLiceId).filter((id): id is number => id !== undefined));
-    } else {
-      setSelectedIdsT2([]);
+      console.error('Greška pri generisanju PDF-a T2:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a T2', type: 'error'});
     }
   };
+
+  // Funkcija za generisanje PDF-a zadnje strane koverte (T2)
+  const generateBackSidePDFT2 = async (lice: UgrozenoLiceT2) => {
+    try {
+      const apiUrl = `${apiService['baseURL']}/api/generate-envelope-back-side-pdf`;
+      console.log('Back Side PDF T2 URL:', apiUrl);
+      console.log('Back Side PDF T2 Request data:', {
+        template: 'T2',
+        ugrozenaLica: [{
+          ugrozenoLiceId: lice.ugrozenoLiceId,
+          ime: lice.ime,
+          prezime: lice.prezime,
+          ulicaIBroj: lice.ulicaIBroj,
+          pttBroj: lice.pttBroj,
+          gradOpstina: lice.gradOpstina,
+          mesto: lice.mesto
+        }]
+      });
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T2',
+          ugrozenaLica: [{
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }]
+        })
+      });
+
+      console.log('Back Side PDF T2 Response status:', response.status);
+      console.log('Back Side PDF T2 Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      console.log('Back Side PDF T2 Blob size:', blob.size, 'bytes');
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-zadnja-strana-t2.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
+
+      // Čišćenje
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a zadnje strane T2:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a zadnje strane T2', type: 'error'});
+    }
+  };
+
+
 
   const generateMultiplePDFT2 = async (lica: UgrozenoLiceT2[]) => {
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
+    try {
+      const response = await fetch(`${apiService['baseURL']}/api/generate-envelope-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          template: 'T2',
+          ugrozenaLica: lica.map(lice => ({
+            ugrozenoLiceId: lice.ugrozenoLiceId,
+            ime: lice.ime,
+            prezime: lice.prezime,
+            ulicaIBroj: lice.ulicaIBroj,
+            pttBroj: lice.pttBroj,
+            gradOpstina: lice.gradOpstina,
+            mesto: lice.mesto
+          }))
+        })
+      });
 
-    for (let i = 0; i < lica.length; i++) {
-      if (i > 0) {
-        pdf.addPage();
-      }
-
-      const lice = lica[i];
+      console.log('PDF Response status:', response.status);
+      console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
       
-      // Kreiranje HTML elementa za PDF
-      const element = document.createElement('div');
-      element.style.width = '246mm';
-      element.style.height = '175mm';
-      element.style.position = 'relative';
-      element.style.background = 'white';
-      element.style.fontFamily = 'Arial, sans-serif';
-      element.style.overflow = 'hidden';
-      element.style.border = '1px solid #ccc';
-
-      // Dodavanje sadržaja
-      element.innerHTML = `
-        <!-- Horizontalne linije za merenje -->
-        <div style="position: absolute; left: 0; top: 21mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 0; top: 31mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 0; top: 41mm; width: 246mm; height: 1px; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 0; top: 100mm; width: 246mm; height: 1px; background: blue; z-index: 10;"></div>
-        
-        <!-- Vertikalne linije za merenje -->
-        <div style="position: absolute; left: 15mm; top: 0; width: 1px; height: 175mm; background: red; z-index: 10;"></div>
-        <div style="position: absolute; left: 90mm; top: 0; width: 1px; height: 175mm; background: blue; z-index: 10;"></div>
-        
-        <!-- Tekst -->
-        <div style="position: absolute; left: 15mm; top: 21mm; font-size: 10pt; font-weight: bold; color: black;">СЕКРЕТАРИЈАТ ЗА СОЦИЈАЛНУ ЗАШТИТУ</div>
-        <div style="position: absolute; left: 15mm; top: 31mm; font-size: 10pt; font-weight: bold; color: black;">27 МАРТА БР. 43-45</div>
-        <div style="position: absolute; left: 15mm; top: 41mm; font-size: 10pt; font-weight: bold; color: black;">11000 Београд</div>
-        <div style="position: absolute; left: 90mm; top: 100mm; font-size: 12pt; font-weight: bold; color: black;">${latinToCyrillic(lice.ime || '')} ${latinToCyrillic(lice.prezime || '')}</div>
-      `;
-
-      // Dodavanje elementa u DOM
-      element.style.position = 'absolute';
-      element.style.left = '-9999px';
-      element.style.top = '0';
-      document.body.appendChild(element);
-
-      try {
-        // Generisanje canvas-a
-        const canvas = await html2canvas(element, {
-          width: 930,
-          height: 662,
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff'
-        });
-
-        // Dodavanje slike u PDF
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', 0, 0, 246, 175);
-
-      } catch (error) {
-        console.error('Greška pri generisanju koverta T2:', error);
-      } finally {
-        // Uklanjanje elementa iz DOM-a
-        document.body.removeChild(element);
+      if (!response.ok) {
+        throw new Error(`HTTP greška: ${response.status}`);
       }
-    }
 
-    // Otvaranje PDF-a u novom tabu
-    const pdfBlob = pdf.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
+      const blob = await response.blob();
+      console.log('PDF Blob size:', blob.size, 'bytes');
+      
+      // Backend automatski generiše ime fajla u Content-Disposition header-u
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'koverte-t2.pdf';
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Backend generisano ime
+      a.click();
 
     // Čišćenje
     setTimeout(() => {
-      URL.revokeObjectURL(pdfUrl);
+        URL.revokeObjectURL(url);
     }, 1000);
+
+    } catch (error) {
+      console.error('Greška pri generisanju PDF-a T2:', error);
+      setToast({msg: 'Greška pri generisanju PDF-a T2', type: 'error'});
+    }
   };
 
   // Filter pretraga - automatski se primenjuje kroz useEffect
@@ -692,39 +999,39 @@ export default function StampanjePage() {
       width: 120,
       renderHeader: () => <span className="font-semibold text-gray-900">Место</span>
     },
+  ]), []);
+
+  // Dodaj custom checkbox kolonu na početak
+  const columnsWithSelection: GridColDef[] = useMemo(() => [
     {
-      field: 'actions',
-      headerName: 'Акције',
-      width: 160,
+      field: 'customSelect',
+      headerName: '',
+      name: 'customSelect',
+      width: 50,
       sortable: false,
       filterable: false,
-      headerAlign: 'left',
-      align: 'center',
+      renderHeader: () => (
+        <input
+          type="checkbox"
+          checked={customSelectedIds.size > 0 && customSelectedIds.size === ugrozenaLica.length}
+          ref={checkbox => {
+            if (checkbox) checkbox.indeterminate = customSelectedIds.size > 0 && customSelectedIds.size < ugrozenaLica.length;
+          }}
+          onChange={toggleSelectAll}
+          className="cursor-pointer"
+        />
+      ),
       renderCell: (params: GridRenderCellParams) => (
-        <div className="flex items-center justify-center gap-2 h-full w-full">
-          <button
-            onClick={() => setPreviewLice(params.row)}
-            className="flex items-center justify-center w-8 h-8 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition-colors duration-200 cursor-pointer"
-            title="Преглед коверте"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => handlePrint(params.row)}
-            className="flex items-center justify-center w-8 h-8 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-colors duration-200 cursor-pointer"
-            title="Штампај угрожено лице"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-          </button>
-        </div>
-      )
+        <input
+          type="checkbox"
+          checked={customSelectedIds.has(params.row.ugrozenoLiceId)}
+          onChange={() => toggleRowSelection(params.row.ugrozenoLiceId)}
+          className="cursor-pointer"
+        />
+      ),
     },
-  ]), []);
+    ...columns
+  ], [customSelectedIds, ugrozenaLica.length, toggleSelectAll, toggleRowSelection, columns]);
 
   // Kolone definicije za EUK-T2 tab
   const columnsT2: GridColDef[] = useMemo(() => ([
@@ -776,39 +1083,39 @@ export default function StampanjePage() {
       width: 200,
       renderHeader: () => <span className="font-semibold text-gray-900">Покриће важења решења</span>
     },
+  ]), []);
+
+  // Dodaj custom checkbox kolonu na početak za T2
+  const columnsWithSelectionT2: GridColDef[] = useMemo(() => [
     {
-      field: 'actions',
-      headerName: 'Акције',
-      width: 160,
+      field: 'customSelect',
+      headerName: '',
+      name: 'customSelect',
+      width: 50,
       sortable: false,
       filterable: false,
-      headerAlign: 'left',
-      align: 'center',
+      renderHeader: () => (
+        <input
+          type="checkbox"
+          checked={customSelectedIdsT2.size > 0 && customSelectedIdsT2.size === ugrozenaLicaT2.length}
+          ref={checkbox => {
+            if (checkbox) checkbox.indeterminate = customSelectedIdsT2.size > 0 && customSelectedIdsT2.size < ugrozenaLicaT2.length;
+          }}
+          onChange={toggleSelectAllT2}
+          className="cursor-pointer"
+        />
+      ),
       renderCell: (params: GridRenderCellParams) => (
-        <div className="flex items-center justify-center gap-2 h-full w-full">
-          <button
-            onClick={() => setPreviewLiceT2(params.row)}
-            className="flex items-center justify-center w-8 h-8 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition-colors duration-200 cursor-pointer"
-            title="Преглед коверте"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => generatePDFT2(params.row)}
-            className="flex items-center justify-center w-8 h-8 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-colors duration-200 cursor-pointer"
-            title="Штампај угрожено лице"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-          </button>
-        </div>
-      )
+        <input
+          type="checkbox"
+          checked={customSelectedIdsT2.has(params.row.ugrozenoLiceId)}
+          onChange={() => toggleRowSelectionT2(params.row.ugrozenoLiceId)}
+          className="cursor-pointer"
+        />
+      ),
     },
-  ]), []);
+    ...columnsT2
+  ], [customSelectedIdsT2, ugrozenaLicaT2.length, toggleSelectAllT2, toggleRowSelectionT2, columnsT2]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
@@ -882,27 +1189,29 @@ export default function StampanjePage() {
                   >
                     Филтери
                   </button>
-                  {selectedIds.length > 0 && (
+                  {customSelectedIds.size > 0 && (
                     <>
-              <button
-                onClick={handlePrintMultiple}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6,9 6,2 18,2 18,9"></polyline>
-                  <path d="M6,18H4a2,2 0 0,1 -2,-2V11a2,2 0 0,1 2,-2H20a2,2 0 0,1 2,2v5a2,2 0 0,1 -2,2H18"></path>
-                  <polyline points="6,14 6,18 18,18 18,14"></polyline>
-                </svg>
-                        Штампај изабране ({selectedIds.length})
-              </button>
-              <button
-                onClick={() => setSelectedIds([])}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-                        Поништи избор
+                      <button
+                        onClick={handlePrintSelected}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="6,9 6,2 18,2 18,9"></polyline>
+                          <path d="M6,18H4a2,2 0 0,1 -2,-2V11a2,2 0 0,1 2,-2H20a2,2 0 0,1 2,2v5a2,2 0 0,1 -2,2H18"></path>
+                          <polyline points="6,14 6,18 18,18 18,14"></polyline>
+                        </svg>
+                        Штампај предњу страну ({customSelectedIds.size})
+                      </button>
+                      <button
+                        onClick={handlePrintSelectedBackSide}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="6,9 6,2 18,2 18,9"></polyline>
+                          <path d="M6,18H4a2,2 0 0,1 -2,-2V11a2,2 0 0,1 2,-2H20a2,2 0 0,1 2,2v5a2,2 0 0,1 -2,2H18"></path>
+                          <polyline points="6,14 6,18 18,18 18,14"></polyline>
+                        </svg>
+                        Штампај задњу страну ({customSelectedIds.size})
                       </button>
                     </>
                   )}
@@ -1076,7 +1385,7 @@ export default function StampanjePage() {
                 <Paper sx={{ height: 600, width: '100%' }}>
                   <DataGrid
                     rows={filteredData}
-                    columns={columns}
+                    columns={columnsWithSelection}
                     getRowId={(row) => row.ugrozenoLiceId || Math.random()}
                     paginationModel={{ page: currentPage, pageSize: pageSize }}
                     onPaginationModelChange={(model) => {
@@ -1084,7 +1393,6 @@ export default function StampanjePage() {
                       setPageSize(model.pageSize);
                     }}
                     pageSizeOptions={[10, 25, 50, 100]}
-                    checkboxSelection
                     disableRowSelectionOnClick
                     disableColumnMenu
                     disableColumnSorting
@@ -1128,9 +1436,9 @@ export default function StampanjePage() {
                                   Филтрирано: <span className="font-semibold text-gray-800">{filteredData.length}</span>
                                 </span>
                               )}
-                              {selectedIds.length > 0 && (
+                              {customSelectedIds.size > 0 && (
                                 <span className="text-sm text-blue-600">
-                                  Изабрано: <span className="font-semibold">{selectedIds.length}</span> за штампање
+                                  Означено: <span className="font-semibold">{customSelectedIds.size}</span> за штампање
                                 </span>
                               )}
                               {Object.values(filters).some(value => value && value.toString().trim() !== '') && (
@@ -1214,27 +1522,29 @@ export default function StampanjePage() {
                   >
                     Филтери
                   </button>
-                  {selectedIdsT2.length > 0 && (
+                  {customSelectedIdsT2.size > 0 && (
                     <>
                       <button
-                        onClick={handlePrintMultipleT2}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2"
+                        onClick={handlePrintSelectedT2}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2 cursor-pointer"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="6,9 6,2 18,2 18,9"></polyline>
                           <path d="M6,18H4a2,2 0 0,1 -2,-2V11a2,2 0 0,1 2,-2H20a2,2 0 0,1 2,2v5a2,2 0 0,1 -2,2H18"></path>
                           <polyline points="6,14 6,18 18,18 18,14"></polyline>
                         </svg>
-                        Штампај изабране ({selectedIdsT2.length})
+                        Штампај предњу страну ({customSelectedIdsT2.size})
                       </button>
                       <button
-                        onClick={() => setSelectedIdsT2([])}
-                        className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2"
+                        onClick={handlePrintSelectedBackSideT2}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center gap-2 cursor-pointer"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6L6 18M6 6l12 12"/>
+                          <polyline points="6,9 6,2 18,2 18,9"></polyline>
+                          <path d="M6,18H4a2,2 0 0,1 -2,-2V11a2,2 0 0,1 2,-2H20a2,2 0 0,1 2,2v5a2,2 0 0,1 -2,2H18"></path>
+                          <polyline points="6,14 6,18 18,18 18,14"></polyline>
                         </svg>
-                        Поништи избор
+                        Штампај задњу страну ({customSelectedIdsT2.size})
                       </button>
                     </>
                   )}
@@ -1363,7 +1673,7 @@ export default function StampanjePage() {
                 <Paper className="w-full">
                   <DataGrid
                     rows={ugrozenaLicaT2}
-                    columns={columnsT2}
+                    columns={columnsWithSelectionT2}
                     getRowId={(row) => row.ugrozenoLiceId || Math.random()}
                     paginationModel={{ page: currentPage, pageSize: pageSize }}
                     onPaginationModelChange={(model) => {
@@ -1371,7 +1681,6 @@ export default function StampanjePage() {
                       setPageSize(model.pageSize);
                     }}
                     pageSizeOptions={[10, 25, 50, 100]}
-                    checkboxSelection
                     disableRowSelectionOnClick
                     disableColumnMenu
                     disableColumnSorting
@@ -1410,9 +1719,9 @@ export default function StampanjePage() {
                               <span className="text-sm text-gray-600">
                                 Укупно: <span className="font-semibold text-gray-800">{ugrozenaLicaT2.length}</span> угрожених лица Т2
                               </span>
-                              {selectedIdsT2.length > 0 && (
+                              {customSelectedIdsT2.size > 0 && (
                                 <span className="text-sm text-blue-600">
-                                  Изабрано: <span className="font-semibold">{selectedIdsT2.length}</span> за штампање
+                                  Означено: <span className="font-semibold">{customSelectedIdsT2.size}</span> за штампање
                                 </span>
                               )}
                             </div>
@@ -1555,9 +1864,18 @@ export default function StampanjePage() {
                     handlePrint(previewLice);
                     setPreviewLice(null);
                   }}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 >
-                  Штампај
+                  Штампај предњу страну
+                </button>
+                <button
+                  onClick={() => {
+                    generateBackSidePDF(previewLice);
+                    setPreviewLice(null);
+                  }}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Штампај задњу страну
                 </button>
               </div>
             </div>
@@ -1644,9 +1962,18 @@ export default function StampanjePage() {
                     generatePDFT2(previewLiceT2);
                     setPreviewLiceT2(null);
                   }}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 >
-                  Штампај
+                  Штампај предњу страну
+                </button>
+                <button
+                  onClick={() => {
+                    generateBackSidePDFT2(previewLiceT2);
+                    setPreviewLiceT2(null);
+                  }}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Штампај задњу страну
                 </button>
               </div>
             </div>

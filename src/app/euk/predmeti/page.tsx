@@ -22,8 +22,6 @@ import { Add, FileDownload } from '@mui/icons-material';
 // Export imports
 import { mkConfig, generateCsv, download } from 'export-to-csv';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import ExportDialog from '../../components/ExportDialog';
 
 interface Predmet {
@@ -332,54 +330,8 @@ export default function PredmetiPage() {
         XLSX.writeFile(workbook, 'predmeti.xlsx');
         break;
       case 'pdf':
-        // Create PDF with Unicode support
-        const pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'mm',
-          format: 'a4'
-        });
-        
-        // Add title
-        pdf.setFontSize(16);
-        pdf.text('Predmeti', 14, 20);
-        
-        // Prepare table data
-        const tableData = filteredData.map(item => 
-          selectedColumns.map(col => item[col] || '')
-        );
-        
-        // Add table
-        autoTable(pdf, {
-          head: [selectedColumns.map(col => {
-            // Map ćirilične nazive na latinične za PDF kompatibilnost
-            const headerMap: Record<string, string> = {
-              'predmetId': 'ID',
-              'nazivPredmeta': 'Naziv predmeta',
-              'status': 'Status',
-              'prioritet': 'Prioritet',
-              'odgovornaOsoba': 'Odgovorna osoba',
-              'rokZaZavrsetak': 'Rok za zavrsetak',
-              'kategorijaSkracenica': 'Kategorija'
-            };
-            return headerMap[col] || col;
-          })],
-          body: tableData,
-          startY: 30,
-          styles: {
-            fontSize: 10,
-            cellPadding: 3,
-          },
-          headStyles: {
-            fillColor: [102, 126, 234],
-            textColor: 255,
-            fontStyle: 'bold',
-          },
-          alternateRowStyles: {
-            fillColor: [245, 245, 245],
-          },
-        });
-        
-        pdf.save('predmeti.pdf');
+        // PDF export je uklonjen - koristi se backend stampanje
+        console.log('PDF export je uklonjen. Koristite stampanje stranicu za PDF generisanje.');
         break;
       default:
         console.log('Unknown format:', format);

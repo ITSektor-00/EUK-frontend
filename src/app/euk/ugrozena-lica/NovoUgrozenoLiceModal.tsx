@@ -47,6 +47,11 @@ export default function NovoUgrozenoLiceModal({
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saveProgress, setSaveProgress] = useState({
+    isSaving: false,
+    percentage: 0,
+    message: ''
+  });
 
   // Dohvati kategorije
   const fetchKategorije = async () => {
@@ -111,6 +116,11 @@ export default function NovoUgrozenoLiceModal({
       datumTrajanjaPrava: '',   // 🆕 NOVO POLJE
     });
     setError(null);
+    setSaveProgress({
+      isSaving: false,
+      percentage: 0,
+      message: ''
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -132,13 +142,9 @@ export default function NovoUgrozenoLiceModal({
       return;
     }
     
-    if (!formData.jmbg.trim()) {
-      setError('Молимо унесите ЈМБГ');
-      return;
-    }
-    
-    if (formData.jmbg.length !== 13) {
-      setError('ЈМБГ мора имати тачно 13 цифара');
+    // JMBG validacija - opciono polje, ali ako se unese mora biti samo cifre
+    if (formData.jmbg && formData.jmbg.length > 0 && !/^\d+$/.test(formData.jmbg)) {
+      setError('ЈМБГ мора садржати само цифре');
       return;
     }
     
@@ -185,12 +191,43 @@ export default function NovoUgrozenoLiceModal({
     setLoading(true);
     setError(null);
     
+    // Initialize progress
+    setSaveProgress({
+      isSaving: true,
+      percentage: 0,
+      message: 'Припрема података...'
+    });
+    
     try {
+      // Simulate progress steps
+      const progressSteps = [
+        { percentage: 20, message: 'Валидација података...' },
+        { percentage: 40, message: 'Припрема за уписивање...' },
+        { percentage: 60, message: 'Уписивање у базу података...' },
+        { percentage: 80, message: 'Провера резултата...' },
+        { percentage: 100, message: 'Завршено!' }
+      ];
+      
+      // Animate progress
+      for (let i = 0; i < progressSteps.length; i++) {
+        setSaveProgress({ isSaving: true, ...progressSteps[i] });
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
       if (editingUgrozenoLice) {
         await apiService.updateUgrozenoLice(editingUgrozenoLice.ugrozenoLiceId!, formData, token);
       } else {
         await apiService.createUgrozenoLice(formData, token);
       }
+      
+      // Show success message briefly
+      setSaveProgress({
+        isSaving: true,
+        percentage: 100,
+        message: 'Успешно сачувано!'
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       onSuccess();
       onClose();
@@ -198,6 +235,13 @@ export default function NovoUgrozenoLiceModal({
     } catch (err) {
       console.error('Error saving ugrozeno lice:', err);
       setError(err instanceof Error ? err.message : 'Грешка при чувању угроженог лица');
+      
+      // Reset progress on error
+      setSaveProgress({
+        isSaving: false,
+        percentage: 0,
+        message: ''
+      });
     } finally {
       setLoading(false);
     }
@@ -253,7 +297,52 @@ export default function NovoUgrozenoLiceModal({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Progress Bar */}
+          {saveProgress.isSaving && (
+            <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="text-center mb-4">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  {saveProgress.percentage === 100 ? (
+                    <div className="w-6 h-6 text-green-600 text-xl">✓</div>
+                  ) : (
+                    <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                </div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">
+                  {saveProgress.percentage === 100 ? 'Сачувано!' : 'Чување у току...'}
+                </h4>
+                <p className="text-sm text-gray-600">{saveProgress.message}</p>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-700">Напредак</span>
+                  <span className="text-sm font-bold text-blue-600">{saveProgress.percentage}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out relative"
+                    style={{ width: `${saveProgress.percentage}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Status Message */}
+              <div className="text-center">
+                <div className="text-sm text-gray-600">
+                  {saveProgress.percentage === 100 
+                    ? 'Подаци су успешно сачувани у базу података'
+                    : 'Молимо сачекајте док се подаци уписивају у базу...'
+                  }
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${saveProgress.isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
             {/* Redni broj */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -302,16 +391,14 @@ export default function NovoUgrozenoLiceModal({
             {/* JMBG */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                ЈМБГ <span className="text-red-500">*</span>
+                ЈМБГ
               </label>
               <input
                 type="text"
                 value={formData.jmbg}
                 onChange={(e) => handleChange('jmbg', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                placeholder="Унесите ЈМБГ (13 цифара)"
-                maxLength={13}
-                required
+                placeholder="Унесите ЈМБГ (опционо)"
               />
             </div>
 
@@ -471,23 +558,33 @@ export default function NovoUgrozenoLiceModal({
             </div>
           </div>
 
-          <div className="flex justify-end gap-4 mt-8 pt-6 border-t border-gray-200">
+          <div className={`flex justify-end gap-4 mt-8 pt-6 border-t border-gray-200 ${saveProgress.isSaving ? 'opacity-50' : ''}`}>
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200 font-medium"
+              disabled={saveProgress.isSaving}
+              className="px-6 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Откажи
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || saveProgress.isSaving}
               className="px-6 py-2 bg-[#3B82F6] text-white hover:bg-[#2563EB] rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {loading && (
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+              {saveProgress.isSaving ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  Чување...
+                </>
+              ) : loading ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  {editingUgrozenoLice ? 'Сачувај измене' : 'Додај угрожено лице'}
+                </>
+              ) : (
+                editingUgrozenoLice ? 'Сачувај измене' : 'Додај угрожено лице'
               )}
-              {editingUgrozenoLice ? 'Сачувај измене' : 'Додај угрожено лице'}
             </button>
           </div>
         </form>
