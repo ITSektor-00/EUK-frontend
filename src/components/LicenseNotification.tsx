@@ -31,7 +31,6 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
     endDate: licenseInfo?.endDate
   }), [licenseInfo, loading, error, isLicenseExpired, isLicenseExpiringSoon]);
   
-  console.log('LicenseNotification render:', debugInfo);
 
   const notificationColor = useMemo(() => {
     if (isLicenseExpired) {
@@ -77,15 +76,12 @@ const LicenseNotification: React.FC<LicenseNotificationProps> = ({ className = '
 
   // Prikaži ako je notificationSent: true ili ako je licenca istekla/ističe uskoro
   if (!licenseInfo) {
-    console.log('LicenseNotification: Not showing - no license info');
     return null;
   }
 
   // Ako je notificationSent: true, uvek prikaži obaveštenje
   if (licenseInfo.notificationSent) {
-    console.log('LicenseNotification: Showing - notificationSent is true');
   } else if (!isLicenseExpired && !isLicenseExpiringSoon) {
-    console.log('LicenseNotification: Not showing - no valid conditions');
     return null;
   }
   

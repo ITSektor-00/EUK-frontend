@@ -20,6 +20,7 @@ const LicenseGuard: React.FC<LicenseGuardProps> = ({
   const { 
     licenseInfo, 
     loading, 
+    error,
     isLicenseValid, 
     isLicenseExpired, 
     checkLicense 

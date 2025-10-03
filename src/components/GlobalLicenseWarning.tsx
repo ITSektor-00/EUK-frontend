@@ -31,7 +31,6 @@ const GlobalLicenseWarning: React.FC<GlobalLicenseWarningProps> = ({ className =
     endDate: globalLicenseInfo?.endDate
   }), [globalLicenseInfo, loading, error, isGlobalLicenseExpired, isGlobalLicenseExpiringSoon]);
   
-  console.log('GlobalLicenseWarning render:', debugInfo);
 
   const warningColor = useMemo(() => {
     if (isGlobalLicenseExpired) {

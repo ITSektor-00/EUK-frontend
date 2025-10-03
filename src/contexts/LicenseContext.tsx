@@ -38,31 +38,18 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
       return;
     }
 
+    // Uklonjena dodatna zaštita koja je sprečavala proveru licence
+
     try {
       setLoading(true);
       setError(null);
       
-      console.log('Starting license check for user:', user.id);
       const licenseData = await licenseService.checkLicenseStatus(user.id, token);
-      console.log('License data received:', licenseData);
-      console.log('License data details:', {
-        hasValidLicense: licenseData.hasValidLicense,
-        endDate: licenseData.endDate,
-        daysUntilExpiry: licenseData.daysUntilExpiry,
-        isExpiringSoon: licenseData.isExpiringSoon,
-        notificationSent: licenseData.notificationSent,
-        message: licenseData.message
-      });
       setLicenseInfo(licenseData);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Greška pri proveri licence';
       setError(errorMessage);
       console.error('License check error:', err);
-      console.error('Error details:', {
-        message: errorMessage,
-        user: user.id,
-        token: token ? 'present' : 'missing'
-      });
       
       // Ako je greška zbog rate limiting-a, ne postavljaj default licence info
       if (errorMessage.includes('429') || errorMessage.includes('Previše zahteva')) {
@@ -81,7 +68,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     } finally {
       setLoading(false);
     }
-  }, [user?.id, token, isAuthenticated]);
+  }, [user?.id, token, isAuthenticated]); // Uklonjen loading da sprečimo beskonačnu petlju
 
   const refreshLicense = useCallback(async () => {
     // Očisti cache pre refresh-a samo ako je potrebno
@@ -110,7 +97,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
       setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user?.id, token]); // Uklonjen checkLicense iz dependency array-a
+  }, [isAuthenticated, user?.id, token]); // Uklonjen checkLicense iz dependency array-a da sprečimo beskonačnu petlju
 
   // Automatska provera licence svakih 15 minuta (smanjeno da izbegnemo rate limiting)
   useEffect(() => {
@@ -140,6 +127,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     daysUntilExpiry: 0,
     isExpiringSoon: false
   });
+
   const isLicenseExpiringSoon = licenseService.isLicenseExpiringSoon(licenseInfo || {
     hasValidLicense: false,
     endDate: '',
@@ -147,18 +135,6 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
     isExpiringSoon: false
   });
 
-  // Debug logovi za licence status - samo kada se promeni licenceInfo
-  useEffect(() => {
-    if (licenseInfo) {
-      console.log('LicenseContext status:', {
-        licenseInfo,
-        isLicenseValid,
-        isLicenseExpired,
-        isLicenseExpiringSoon,
-        notificationSent: licenseInfo?.notificationSent
-      });
-    }
-  }, [licenseInfo, isLicenseValid, isLicenseExpired, isLicenseExpiringSoon]);
 
   const getStatusMessage = useCallback(() => {
     if (!licenseInfo) {

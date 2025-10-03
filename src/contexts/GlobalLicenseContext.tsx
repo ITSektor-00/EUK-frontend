@@ -28,7 +28,6 @@ export const GlobalLicenseProvider: React.FC<{ children: ReactNode }> = ({ child
 
   const checkGlobalLicense = useCallback(async () => {
     // ONEMOGUĆENO - ne proveravaj globalnu licencu automatski
-    console.log('Global license check disabled');
     return;
     
     // Proveri da li je korisnik autentifikovan
@@ -47,17 +46,7 @@ export const GlobalLicenseProvider: React.FC<{ children: ReactNode }> = ({ child
       setLoading(true);
       setError(null);
       
-      console.log('Starting global license check...');
       const licenseData = await globalLicenseService.checkGlobalLicenseStatus();
-      console.log('Global license data received:', licenseData);
-      console.log('Global license data details:', {
-        hasValidLicense: licenseData.hasValidLicense,
-        endDate: licenseData.endDate,
-        daysUntilExpiry: licenseData.daysUntilExpiry,
-        isExpiringSoon: licenseData.isExpiringSoon,
-        notificationSent: licenseData.notificationSent,
-        message: licenseData.message
-      });
       setGlobalLicenseInfo(licenseData);
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : 'Greška pri proveri globalne licence';
@@ -69,7 +58,6 @@ export const GlobalLicenseProvider: React.FC<{ children: ReactNode }> = ({ child
       // Ako je greška zbog rate limiting-a, ne postavljaj error
       if (errorMessage.includes('429') || errorMessage.includes('Previše zahteva')) {
         // Zadržavamo postojeće licence info i ne postavljamo error
-        console.log('Rate limiting detected, keeping existing license info');
         return;
       }
       
@@ -140,18 +128,6 @@ export const GlobalLicenseProvider: React.FC<{ children: ReactNode }> = ({ child
     message: 'Лиценца није важећа'
   });
 
-  // Debug logovi za globalnu licencu status - samo kada se promeni globalLicenseInfo
-  useEffect(() => {
-    if (globalLicenseInfo) {
-      console.log('GlobalLicenseContext status:', {
-        globalLicenseInfo,
-        isGlobalLicenseValid,
-        isGlobalLicenseExpired,
-        isGlobalLicenseExpiringSoon,
-        notificationSent: globalLicenseInfo?.notificationSent
-      });
-    }
-  }, [globalLicenseInfo, isGlobalLicenseValid, isGlobalLicenseExpired, isGlobalLicenseExpiringSoon]);
 
   const getGlobalLicenseStatusMessage = useCallback(() => {
     if (!globalLicenseInfo) {

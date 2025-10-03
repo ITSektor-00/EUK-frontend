@@ -340,11 +340,11 @@ class ApiService {
   // ===== UGROZENO LICE T2 API ENDPOINTS =====
 
   async getUgrozenaLicaT2(params: string, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica-t2?${params}`, { method: 'GET' }, token);
+    return this.apiCall(`/api/ugrozeno-lice-t2?${params}`, { method: 'GET' }, token);
   }
 
   async createUgrozenoLiceT2(data: Record<string, unknown>, token: string) {
-    const result = await this.apiCall('/api/euk/ugrozena-lica-t2', { 
+    const result = await this.apiCall('/api/ugrozeno-lice-t2', { 
       method: 'POST', 
       body: JSON.stringify(data) 
     }, token);
@@ -352,7 +352,7 @@ class ApiService {
   }
 
   async updateUgrozenoLiceT2(id: number, data: Record<string, unknown>, token: string) {
-    const result = await this.apiCall(`/api/euk/ugrozena-lica-t2/${id}`, { 
+    const result = await this.apiCall(`/api/ugrozeno-lice-t2/${id}`, { 
       method: 'PUT', 
       body: JSON.stringify(data) 
     }, token);
@@ -360,35 +360,35 @@ class ApiService {
   }
 
   async deleteUgrozenoLiceT2(id: number, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica-t2/${id}`, { method: 'DELETE' }, token);
+    return this.apiCall(`/api/ugrozeno-lice-t2/${id}`, { method: 'DELETE' }, token);
   }
 
   // T2 napredne pretrage
   async searchUgrozenoLiceT2ByEdBroj(edBroj: string, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica-t2/ed-broj/${edBroj}`, { method: 'GET' }, token);
+    return this.apiCall(`/api/ugrozeno-lice-t2/ed-broj/${edBroj}`, { method: 'GET' }, token);
   }
 
   async searchUgrozenoLiceT2ByGradOpstina(gradOpstina: string, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica-t2/grad-opstina/${gradOpstina}`, { method: 'GET' }, token);
+    return this.apiCall(`/api/ugrozeno-lice-t2/grad-opstina/${gradOpstina}`, { method: 'GET' }, token);
   }
 
   async searchUgrozenoLiceT2ByMesto(mesto: string, token: string) {
-    return this.apiCall(`/api/euk/ugrozena-lica-t2/mesto/${mesto}`, { method: 'GET' }, token);
+    return this.apiCall(`/api/ugrozeno-lice-t2/mesto/${mesto}`, { method: 'GET' }, token);
   }
 
   async searchUgrozenoLiceT2ByFilters(filters: Record<string, unknown>, token: string) {
-    return this.apiCall('/api/euk/ugrozena-lica-t2/search/filters', { 
+    return this.apiCall('/api/ugrozeno-lice-t2/search/filters', { 
       method: 'POST', 
       body: JSON.stringify(filters) 
     }, token);
   }
 
   async getUgrozenaLicaT2Statistics(token: string) {
-    return this.apiCall('/api/euk/ugrozena-lica-t2/statistics', { method: 'GET' }, token);
+    return this.apiCall('/api/ugrozeno-lice-t2/statistics', { method: 'GET' }, token);
   }
 
   async getUgrozenaLicaT2Count(token: string) {
-    return this.apiCall('/api/euk/ugrozena-lica-t2/count', { method: 'GET' }, token);
+    return this.apiCall('/api/ugrozeno-lice-t2/count', { method: 'GET' }, token);
   }
 
   // Kategorije endpoints
