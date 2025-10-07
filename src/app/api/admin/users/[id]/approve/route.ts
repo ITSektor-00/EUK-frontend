@@ -8,7 +8,7 @@ export async function POST(
     const { id } = await params;
     const userId = id;
     const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8080' 
+      ? 'http://localhost:8081' 
       : 'https://euk.onrender.com';
 
     const response = await fetch(`${backendUrl}/api/admin/users/${userId}/approve`, {

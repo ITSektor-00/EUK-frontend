@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8080' 
+      ? 'http://localhost:8081' 
       : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
     
     const response = await fetch(`${backendUrl}/api/auth/signup`, {

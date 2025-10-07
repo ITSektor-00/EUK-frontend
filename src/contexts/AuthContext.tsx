@@ -136,7 +136,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]); // Uklonjen loadUser iz dependency array-a da sprečimo beskonačnu petlju
 
   const login = async (credentials: { usernameOrEmail: string; password: string }) => {

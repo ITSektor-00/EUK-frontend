@@ -96,7 +96,6 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
       setLicenseInfo(null);
       setError(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user?.id, token]); // Uklonjen checkLicense iz dependency array-a da sprečimo beskonačnu petlju
 
   // Automatska provera licence svakih 15 minuta (smanjeno da izbegnemo rate limiting)

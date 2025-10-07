@@ -5,6 +5,7 @@ import { UgrozenoLiceT2 } from '../ugrozeno-lice-t2/types';
 import { useAuth } from '../../../contexts/AuthContext';
 import { DataGrid, GridColDef, GridRenderCellParams, GridRowSelectionModel } from '@mui/x-data-grid';
 import { Paper } from '@mui/material';
+import { apiService } from '../../../services/api';
 
 // Funkcija za konverziju srpske latinice u ćirilicu
 const latinToCyrillic = (text: string): string => {
@@ -38,9 +39,15 @@ const latinToCyrillic = (text: string): string => {
 
 // DODAJ OVO NA VRH KOMPONENTE
 const getBaseURL = () => {
-  return process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080'
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+  // U Docker okruženju, NODE_ENV može biti 'production', pa koristimo NEXT_PUBLIC_API_URL
+  // Docker kontejner je mapiran na port 8081, ne 8080
+  if (typeof window !== 'undefined') {
+    // Client-side: koristi environment varijablu
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
+  } else {
+    // Server-side: koristi environment varijablu ili fallback
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
+  }
 };
 
 export default function StampanjePage() {
@@ -157,17 +164,7 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        const res = await fetch(`${getBaseURL()}/api/euk/ugrozena-lica-t1?${params.toString()}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!res.ok) {
-        throw new Error(`HTTP greška: ${res.status}`);
-      }
-
-      const data: UgrozenoLiceResponse = await res.json();
+        const data: UgrozenoLiceResponse = await apiService.getUgrozenaLica(params.toString(), token!);
         const pageData = data.content || data;
         
         if (Array.isArray(pageData) && pageData.length > 0) {
@@ -215,17 +212,7 @@ export default function StampanjePage() {
         params.append('size', '1000'); // Maksimalna dozvoljena veličina stranice
         params.append('page', currentPage.toString());
         
-        const res = await fetch(`${getBaseURL()}/api/euk/ugrozena-lica-t2?${params.toString()}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!res.ok) {
-          throw new Error(`HTTP greška: ${res.status}`);
-        }
-        
-        const data = await res.json();
+        const data = await apiService.getUgrozenaLicaT2(params.toString(), token!);
         const pageData = data.content || data;
         
         if (Array.isArray(pageData) && pageData.length > 0) {

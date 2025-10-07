@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
     // Forward to backend API with query parameters
     const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8080' 
+      ? 'http://localhost:8081' 
       : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
     const queryParams = new URLSearchParams({
       page,

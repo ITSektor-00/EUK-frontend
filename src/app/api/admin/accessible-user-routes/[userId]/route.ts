@@ -9,7 +9,7 @@ export async function GET(
     
     // Forward to backend API
     const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8080' 
+      ? 'http://localhost:8081' 
       : 'https://euk.onrender.com';
     
     const response = await fetch(`${backendUrl}/api/admin/accessible-user-routes/${userId}`, {

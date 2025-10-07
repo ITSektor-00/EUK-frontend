@@ -37,7 +37,7 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com';
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost';
   }
 
   // Helper za auth headers

@@ -8,8 +8,8 @@ export async function POST(request: NextRequest) {
       
       // Pozovi backend API za odjavu
       const backendUrl = process.env.NODE_ENV === 'development' 
-        ? 'http://localhost:8080' 
-        : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+        ? 'http://localhost:8081' 
+        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081');
       
       try {
         await fetch(`${backendUrl}/api/auth/logout`, {

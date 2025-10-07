@@ -1,0 +1,373 @@
+/* Word Template Generation Styles */
+
+.stepper {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    opacity: 0.5;
+    transition: opacity 0.3s;
+}
+
+.step.active {
+    opacity: 1;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1rem;
+    font-weight: bold;
+}
+
+.step.active .step-number {
+    background: #007bff;
+    color: white;
+}
+
+.manual-data-step {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Word Template specific styles */
+.word-template-form {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    min-height: 100vh;
+}
+
+.word-template-stepper {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.word-template-step-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+}
+
+.word-template-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2rem;
+}
+
+.word-template-button {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+}
+
+.word-template-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.word-template-button-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.word-template-button-primary:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.word-template-button-secondary {
+    background: #6b7280;
+    color: white;
+}
+
+.word-template-button-secondary:hover:not(:disabled) {
+    background: #4b5563;
+}
+
+/* Step specific styles */
+.lice-selection-step {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.lice-selection-column {
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.lice-selection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.lice-selection-list {
+    max-height: 240px;
+    overflow-y: auto;
+    space-y: 0.5rem;
+}
+
+.lice-selection-item {
+    width: 100%;
+    text-align: left;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.lice-selection-item:hover {
+    background: #f3f4f6;
+}
+
+.lice-selection-item.selected {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
+/* Manual data step styles */
+.manual-data-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.manual-data-field {
+    margin-bottom: 1.5rem;
+}
+
+.manual-data-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.manual-data-textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+.manual-data-textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.manual-data-counter {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+/* Generation step styles */
+.generation-preview {
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.generation-preview-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.generation-preview-item:last-child {
+    border-bottom: none;
+}
+
+.generation-preview-label {
+    font-weight: 600;
+    color: #374151;
+}
+
+.generation-preview-value {
+    color: #6b7280;
+}
+
+.generation-button {
+    background: #3b82f6;
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1.125rem;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.generation-button:hover:not(:disabled) {
+    background: #2563eb;
+    box-shadow: 0 6px 8px -1px rgba(0, 0, 0, 0.15);
+}
+
+.generation-button:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.generation-info {
+    background: #dbeafe;
+    border: 1px solid #93c5fd;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.generation-info-title {
+    font-weight: 600;
+    color: #1e40af;
+    margin-bottom: 0.5rem;
+}
+
+.generation-info-list {
+    color: #1e40af;
+    font-size: 0.875rem;
+    space-y: 0.25rem;
+}
+
+/* Loading states */
+.word-template-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+}
+
+.word-template-spinner {
+    width: 3rem;
+    height: 3rem;
+    border: 4px solid #e5e7eb;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Error and success states */
+.word-template-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.word-template-success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #16a34a;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .stepper {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .step {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .step-number {
+        margin-right: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    .lice-selection-step {
+        grid-template-columns: 1fr;
+    }
+    
+    .word-template-navigation {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .word-template-button {
+        width: 100%;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .word-template-form {
+        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    }
+    
+    .word-template-stepper,
+    .word-template-step-content {
+        background: #374151;
+        color: #f9fafb;
+    }
+    
+    .lice-selection-column {
+        background: #4b5563;
+    }
+    
+    .generation-preview {
+        background: #4b5563;
+    }
+}

@@ -39,7 +39,7 @@ class WebSocketService {
         
         // Production - koristi HTTPS protokol ako je stranica učitana preko HTTPS-a
         const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        return `${protocol}//euk.onrender.com/ws`;
+        return `${protocol}//localhost/ws`;
       };
       
       const wsUrl = getWebSocketUrl();

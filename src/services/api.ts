@@ -6,10 +6,8 @@ class ApiService {
   private minRequestInterval: number = 500; // Minimum 500ms between requests
 
   constructor() {
-    // Koristi direktne URL-ove za backend
-    this.baseURL = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8080'  // Direktan poziv backend-a u development-u
-      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com'); // Direktan poziv u production-u
+    // Koristi Next.js API route-ove umesto direktnog pristupa backend-u
+    this.baseURL = '';
   }
 
   // Cache helper methods

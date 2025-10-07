@@ -17,9 +17,7 @@ export default function ApiTest() {
   const [results, setResults] = useState<ApiResults>({});
   const [loading, setLoading] = useState<string | null>(null);
 
-  const baseURL = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+  const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost';
 
   const testEndpoint = async (endpoint: string, name: string) => {
     setLoading(name);

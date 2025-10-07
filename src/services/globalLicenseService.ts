@@ -36,7 +36,7 @@ class GlobalLicenseService {
   constructor() {
     this.baseURL = process.env.NODE_ENV === 'development' 
       ? 'http://localhost:8080'
-      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost');
   }
 
   /**

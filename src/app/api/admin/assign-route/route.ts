@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward to backend API
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8081';
     
     const response = await fetch(`${backendUrl}/api/admin/assign-route`, {
       method: 'POST',
