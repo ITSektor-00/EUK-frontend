@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { API_BASE_URL } from '@/config/api';
 
-const SPRING_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:8081' 
-  : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
+const SPRING_BASE_URL = API_BASE_URL;
 
 // Rate limiting mapa - čuva broj zahteva po IP adresi
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();

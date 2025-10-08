@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
     
     if (authHeader) {
-      
       // Pozovi backend API za odjavu
-      const backendUrl = process.env.NODE_ENV === 'development' 
-        ? 'http://localhost:8081' 
-        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081');
-      
       try {
-        await fetch(`${backendUrl}/api/auth/logout`, {
+        await apiRequest('/api/auth/logout', {
           method: 'POST',
           headers: {
             'Authorization': authHeader,
-            'Content-Type': 'application/json',
           }
         });
       } catch (backendError) {

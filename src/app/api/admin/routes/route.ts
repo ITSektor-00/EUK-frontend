@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function GET(request: NextRequest) {
   try {
     // Forward to backend API
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8081';
-    
-    const response = await fetch(`${backendUrl}/api/routes`, {
+    const response = await apiRequest('/api/routes', {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': request.headers.get('authorization') || ''
       }
     });

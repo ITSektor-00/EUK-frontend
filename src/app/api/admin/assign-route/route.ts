@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,12 +14,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward to backend API
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8081';
-    
-    const response = await fetch(`${backendUrl}/api/admin/assign-route`, {
+    const response = await apiRequest('/api/admin/assign-route', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': request.headers.get('authorization') || ''
       },
       body: JSON.stringify({ userId, routeId })

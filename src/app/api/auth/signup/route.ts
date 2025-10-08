@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8081' 
-      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
-    
-    const response = await fetch(`${backendUrl}/api/auth/signup`, {
+    const response = await apiRequest('/api/auth/signup', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(body)
     });
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,16 +12,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8081' 
-      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
     
-    const response = await fetch(`${backendUrl}/api/auth/check-username?username=${encodeURIComponent(username)}`, {
+    const response = await apiRequest(`/api/auth/check-username?username=${encodeURIComponent(username)}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
     });
 
     const contentType = response.headers.get('content-type');

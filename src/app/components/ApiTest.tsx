@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { API_BASE_URL } from '@/config/api';
 
 interface ApiResult {
   status: number | string;
@@ -17,7 +18,7 @@ export default function ApiTest() {
   const [results, setResults] = useState<ApiResults>({});
   const [loading, setLoading] = useState<string | null>(null);
 
-  const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost';
+  const baseURL = API_BASE_URL;
 
   const testEndpoint = async (endpoint: string, name: string) => {
     setLoading(name);

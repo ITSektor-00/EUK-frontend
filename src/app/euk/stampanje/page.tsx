@@ -6,6 +6,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { DataGrid, GridColDef, GridRenderCellParams, GridRowSelectionModel } from '@mui/x-data-grid';
 import { Paper } from '@mui/material';
 import { apiService } from '../../../services/api';
+import { API_BASE_URL } from '@/config/api';
 
 // Funkcija za konverziju srpske latinice u ćirilicu
 const latinToCyrillic = (text: string): string => {
@@ -41,13 +42,7 @@ const latinToCyrillic = (text: string): string => {
 const getBaseURL = () => {
   // U Docker okruženju, NODE_ENV može biti 'production', pa koristimo NEXT_PUBLIC_API_URL
   // Docker kontejner je mapiran na port 8081, ne 8080
-  if (typeof window !== 'undefined') {
-    // Client-side: koristi environment varijablu
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-  } else {
-    // Server-side: koristi environment varijablu ili fallback
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-  }
+  return API_BASE_URL;
 };
 
 export default function StampanjePage() {

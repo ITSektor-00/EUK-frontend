@@ -1,4 +1,4 @@
-// API_BASE_URL je uklonjen jer se ne koristi
+import { API_BASE_URL } from '@/config/api';
 
 export interface SignUpData {
   username: string;
@@ -37,7 +37,7 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost';
+    this.baseURL = API_BASE_URL;
   }
 
   // Helper za auth headers

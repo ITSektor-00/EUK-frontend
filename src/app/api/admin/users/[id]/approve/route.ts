@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function POST(
   request: NextRequest,
@@ -7,14 +8,10 @@ export async function POST(
   try {
     const { id } = await params;
     const userId = id;
-    const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8081' 
-      : 'https://euk.onrender.com';
 
-    const response = await fetch(`${backendUrl}/api/admin/users/${userId}/approve`, {
+    const response = await apiRequest(`/api/admin/users/${userId}/approve`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': request.headers.get('authorization') || ''
       }
     });

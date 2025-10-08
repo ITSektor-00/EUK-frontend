@@ -1,8 +1,10 @@
+import { API_BASE_URL } from '@/config/api';
+
 /**
  * API konfiguracija za optimizaciju zahteva
  */
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080',
+  BASE_URL: API_BASE_URL,
   TIMEOUT: 10000,
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000,

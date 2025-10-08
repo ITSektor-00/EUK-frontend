@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function GET(
   request: NextRequest,
@@ -8,14 +9,9 @@ export async function GET(
     const { userId } = await params;
     
     // Forward to backend API
-    const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8081' 
-      : 'https://euk.onrender.com';
-    
-    const response = await fetch(`${backendUrl}/api/admin/accessible-routes/${userId}`, {
+    const response = await apiRequest(`/api/admin/accessible-routes/${userId}`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': request.headers.get('authorization') || ''
       }
     });

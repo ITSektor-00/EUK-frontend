@@ -97,3 +97,4 @@ NEXT_PUBLIC_API_URL=https://your-backend-domain.com
 - `apiService` klasa ima ugrađeni error handling i retry logiku
 - Sve API pozive treba da koriste `apiService` metode umesto direktnih `fetch` poziva
 - Environment varijable moraju biti pravilno postavljene u Docker okruženju
+

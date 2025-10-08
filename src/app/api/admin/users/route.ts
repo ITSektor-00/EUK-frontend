@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiRequest } from '@/config/api';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -9,11 +10,7 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search');
 
   try {
-
     // Forward to backend API with query parameters
-    const backendUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8081' 
-      : (process.env.NEXT_PUBLIC_API_URL || 'https://euk.onrender.com');
     const queryParams = new URLSearchParams({
       page,
       size,
@@ -22,10 +19,9 @@ export async function GET(request: NextRequest) {
       ...(search && { search })
     });
 
-    const response = await fetch(`${backendUrl}/api/users?${queryParams}`, {
+    const response = await apiRequest(`/api/users?${queryParams}`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': request.headers.get('authorization') || ''
       }
     });

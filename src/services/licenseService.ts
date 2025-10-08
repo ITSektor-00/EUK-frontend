@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '@/config/api';
+
 export interface LicenseInfo {
   hasValidLicense: boolean;
   endDate: string;
@@ -35,9 +37,7 @@ class LicenseService {
   private pendingRequests: Map<string, Promise<any>> = new Map();
 
   constructor() {
-    this.baseURL = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8080'
-        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost');
+    this.baseURL = API_BASE_URL;
   }
 
   /**

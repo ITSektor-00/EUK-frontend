@@ -80,7 +80,7 @@ const FormulariPage: React.FC = () => {
                                     </div>
                                     <div className="mt-4">
                                         <a
-                                            href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/template/download?filePath=${encodeURIComponent(generatedTemplate.templateFilePath)}`}
+                                            href={`${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080') : ''}/api/template/download?filePath=${encodeURIComponent(generatedTemplate.templateFilePath)}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
